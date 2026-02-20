@@ -78,7 +78,7 @@ def get_unique_filename(base_dir, base_name, ext):
         counter += 1
 
 # --- [메인 배포 엔진] ---
-def build_final_reports():
+def build_final_reports(external_config=None):
     print("🏭 리포트 빌드 엔진 가동...")
     
     # 1. 파일 자동 탐색 (표준 데이터 -> sales_raw 폴더 -> 루트 순서)
@@ -102,7 +102,7 @@ def build_final_reports():
             
     if not sales_file:
         print("❌ 에러: 실적 데이터를 찾을 수 없습니다.")
-        return
+        return None
 
     # 목표 데이터 검색
     target_search_paths = [
@@ -123,7 +123,7 @@ def build_final_reports():
 
     if not target_file:
         print("❌ 에러: 목표 데이터를 찾을 수 없습니다.")
-        return
+        return None
         
     print(f"📊 [Loaded] 실적 데이터: {sales_file}")
     print(f"🚩 [Loaded] KPI 목표: {target_file}")
@@ -195,15 +195,20 @@ def build_final_reports():
     
     df_targets['월'] = df_targets['월'].fillna(1).astype(int)
     
-    # 마스터 로직 파일 경로 수정
-    logic_path = 'data/logic/SFE_Master_Logic_v1.0.xlsx'
-    if not os.path.exists(logic_path):
-        logic_path = 'SFE_Master_Logic_v1.0.xlsx' # 루트 확인
-        
-    xl = pd.ExcelFile(logic_path)
-    
-    W_ACT = dict(zip(xl.parse('Activity_Weights')['활동명'], xl.parse('Activity_Weights')['가중치']))
-    W_SEG = dict(zip(xl.parse('Segment_Weights')['병원규모'], xl.parse('Segment_Weights')['보정계수']))
+    # 가중치 설정 (슬라이더 값이 있으면 그것을 사용, 없으면 엑셀에서 로드)
+    if external_config:
+        W_ACT = external_config.get('hir_weights', {})
+        W_SEG = external_config.get('pi_weights', {})
+        print("💡 외부 설정(Streamlit 슬라이더) 가중치를 적용합니다.")
+    else:
+        # 마스터 로직 파일 경로 수정
+        logic_path = 'data/logic/SFE_Master_Logic_v1.0.xlsx'
+        if not os.path.exists(logic_path):
+            logic_path = 'SFE_Master_Logic_v1.0.xlsx' # 루트 확인
+            
+        xl = pd.ExcelFile(logic_path)
+        W_ACT = dict(zip(xl.parse('Activity_Weights')['활동명'], xl.parse('Activity_Weights')['가중치']))
+        W_SEG = dict(zip(xl.parse('Segment_Weights')['병원규모'], xl.parse('Segment_Weights')['보정계수']))
 
     # 2. 지표 연산
     df_raw['날짜'] = pd.to_datetime(df_raw['날짜'])
@@ -358,6 +363,7 @@ def build_final_reports():
         print("⚠️ WARNING: No branch data generated. The report will be empty.")
     
     print(f"✅ Success: '{output_path}' has been created.")
+    return output_path
 
 if __name__ == "__main__":
     build_final_reports()

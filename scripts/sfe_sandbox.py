@@ -5,6 +5,12 @@ import plotly.express as px
 from datetime import datetime
 import os
 import glob
+import sys
+
+# scripts 폴더를 경로에 추가하여 모듈 임포트 가능하게 설정
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.append(current_dir)
 
 # --- [1. 기본 환경 설정] ---
 st.set_page_config(layout="wide", page_title="SFE Master Sandbox V13.1")
@@ -257,17 +263,42 @@ if st.session_state.clean_master is not None:
         st.plotly_chart(fig, use_container_width=True)
 
     # 📦 리포트 빌더용 파일 추출 섹션
-    st.info("📦 **리포트 빌더 전용 표준 파일 생성**")
+    st.info("📦 **리포트 빌더 및 최종 결과물 생성**")
     final_cols = ['지점', '성명', '품목', '처방금액', '처방수량', 'activities', 'segment', '날짜', 'HIR_Raw', 'RTR_Raw', 'PHR_Raw']
     export_df = df[final_cols]
     
-    csv_out = export_df.to_csv(index=False).encode('utf-8-sig')
-    st.download_button(
-        label="📥 리포트 빌더용 표준 파일(standardized_sales.csv) 다운로드",
-        data=csv_out,
-        file_name="standardized_sales.csv",
-        mime="text/csv",
-        help="이 파일을 다운로드하여 sfe_report_builder.py가 있는 폴더에 넣으세요."
-    )
+    c1, c2 = st.columns(2)
+    with c1:
+        csv_out = export_df.to_csv(index=False).encode('utf-8-sig')
+        st.download_button(
+            label="📥 표준 CSV 다운로드",
+            data=csv_out,
+            file_name="standardized_sales.csv",
+            mime="text/csv",
+            help="이 파일을 다운로드하여 별도로 보관할 수 있습니다."
+        )
     
+    with c2:
+        if st.button("🛠️ 최종 전략 리포트(HTML) 생성", type="primary"):
+            with st.spinner("🚀 고차원 분석 엔진 가동 중..."):
+                try:
+                    # report_builder_v12의 로직 호출 (현재 슬라이더 설정 반영)
+                    from report_builder_v12 import build_final_reports
+                    output_file = build_final_reports(external_config=CONFIG)
+                    
+                    if output_file:
+                        st.success(f"✅ 리포트 생성 완료! \n\n 파일 위치: `{output_file}`")
+                        
+                        # 생성된 HTML 파일을 바로 다운로드할 수 있게 제공
+                        with open(output_file, "rb") as f:
+                            st.download_button(
+                                label="🚀 생성된 대시보드 바로 다운로드",
+                                data=f,
+                                file_name=os.path.basename(output_file),
+                                mime="text/html"
+                            )
+                except Exception as e:
+                    st.error(f"❌ 리포트 생성 중 오류 발생: {str(e)}")
+    
+    st.divider()
     st.dataframe(export_df.head(20))
