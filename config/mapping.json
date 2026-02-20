@@ -1,0 +1,141 @@
+{
+  "지점": [
+    "지점",
+    "지점명",
+    "지점 코드",
+    "Branch",
+    "Region",
+    "Center",
+    "영업소"
+  ],
+  "성명": [
+    "성명",
+    "담당자",
+    "담당자명",
+    "Rep",
+    "Sales Person",
+    "Member",
+    "담당자ID"
+  ],
+  "품목": [
+    "품목",
+    "제품",
+    "제품명",
+    "Product",
+    "Item",
+    "Material",
+    "품목명"
+  ],
+  "처방금액": [
+    "처방금액",
+    "실적",
+    "매출",
+    "Amount",
+    "Sales",
+    "Revenue",
+    "실적금액"
+  ],
+  "목표금액": [
+    "목표금액",
+    "목표",
+    "Target",
+    "Quota",
+    "목표가"
+  ],
+  "월": [
+    "월",
+    "기준월",
+    "Month",
+    "Period"
+  ],
+  "activities": [
+    "activities",
+    "활동",
+    "활동명",
+    "영업활동",
+    "Activity Type",
+    "활동유형"
+  ],
+  "segment": [
+    "segment",
+    "규모",
+    "등급",
+    "병원구분",
+    "병원규모",
+    "Segment",
+    "병원명"
+  ],
+  "날짜": [
+    "날짜",
+    "거래일자",
+    "연월일",
+    "Date",
+    "Transaction Date",
+    "기준월"
+  ],
+  "core_metrics": {
+    "HIR": [
+      "HIR",
+      "유효행동",
+      "활동지수",
+      "High Impact"
+    ],
+    "RTR": [
+      "RTR",
+      "관계온도",
+      "체감온도",
+      "Relationship"
+    ],
+    "BCR": [
+      "BCR",
+      "활동규칙성",
+      "성실도",
+      "Consistency"
+    ],
+    "PHR": [
+      "PHR",
+      "파이프라인",
+      "건강도",
+      "Pipeline"
+    ],
+    "FGR": [
+      "FGR",
+      "성장지수",
+      "성장률",
+      "Growth"
+    ],
+    "PI": [
+      "PI",
+      "성과지수",
+      "Rx Index",
+      "Performance"
+    ]
+  },
+  "detailed_logic": {
+    "W_Act": [
+      "활동가중치",
+      "Activity Weight"
+    ],
+    "W_Seg": [
+      "세그먼트가중치",
+      "Segment Weight"
+    ],
+    "Decay": [
+      "감쇠상수",
+      "Decay Rate"
+    ],
+    "Q_Ratio": [
+      "수량비중",
+      "Quantity Ratio"
+    ],
+    "Gini": [
+      "지니계수",
+      "의존도",
+      "Risk Index"
+    ],
+    "Efficiency": [
+      "영업효율",
+      "Efficiency"
+    ]
+  }
+}

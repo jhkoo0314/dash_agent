@@ -1,0 +1,17 @@
+﻿?룺 由ы룷??鍮뚮뱶 ?붿쭊 媛??..
+?뱤 [Loaded] ?ㅼ쟻 ?곗씠?? output/processed_data/standardized_sales.csv
+?슜 [Loaded] KPI 紐⑺몴: data/targets\25y_target.csv
+DEBUG: df_raw shape: (49783, 32)
+DEBUG: df_raw columns: ['?좎쭨', '吏?륤D', '吏??, '?대떦?륤D', '?깅챸', '蹂묒썝ID', 'segment', '?덈ぉID', '?덈ぉ', '泥섎갑?섎웾', '泥섎갑湲덉븸', '紐⑺몴湲덉븸', '?쒕룞ID', '?쒕룞?쇱옄', '?멸렇癒쇳듃', 'activities', '?묒큺寃곌낵', '?뚯슂遺?, '媛먯젙', '?ㅼ쓬?≪뀡', '鍮꾧퀬', 'W_Act', 'W_Seg', 'HIR_Raw', 'days_diff', 'RTR_Raw', 'BCR_Raw', 'PHR_Raw', 'PI_Raw', '??, 'HIR_W', 'SEG_W']
+DEBUG: actual_agg shape: (72, 6)
+DEBUG: df_final shape: (72, 13)
+DEBUG: df_final head:
+       吏??  ?깅챸      ?덈ぉ  ...        PHR         紐⑺몴湲덉븸         ?ъ꽦瑜?
+0  寃쎄린?쒕?吏?? 媛뺤＜?? 湲猷⑥퐫諛몃윴?? ...  70.771488  214954514.0  230.557007
+1  寃쎄린?쒕?吏?? 媛뺤＜??  ?ㅼ삤?꾨씪議? ...  76.219714  150365168.0  336.315989
+2  寃쎄린?쒕?吏?? 媛뺤＜?? 由щ컮肄뷀봽罹≪뒓  ...  55.146923  141132799.0  352.343774
+3  寃쎄린?쒕?吏?? 媛뺤＜??   誘몄긽?덈ぉ  ...  54.275254          0.0    0.000000
+4  寃쎄린?쒕?吏?? 媛뺤＜??  ?꾩꽭?몃줎?? ...  73.506966  151245171.0  310.802743
+
+[5 rows x 13 columns]
+??鍮뚮뱶 ?깃났: 'Strategic_Full_Dashboard.html'???앹꽦?섏뿀?듬땲??
