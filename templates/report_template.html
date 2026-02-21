@@ -32,6 +32,10 @@
                 <select id='rSel'><option value='NONE'>담당자 상세 선택</option></select>
             </div>
         </header>
+        <div class='flex gap-2 mb-6'>
+            <button id='periodMonthly' class='px-3 py-1 rounded-lg text-xs font-black bg-blue-600 text-white'>월별</button>
+            <button id='periodQuarterly' class='px-3 py-1 rounded-lg text-xs font-black bg-slate-200 text-slate-700'>분기별</button>
+        </div>
 
         <!-- 6개 핵심 지표 카드 -->
         <div class='grid grid-cols-6 gap-4 mb-8'>
@@ -70,7 +74,7 @@
         <!-- 그룹 분석 구역 (6개 섹션) -->
         <div id='groupView'>
             <div class='grid grid-cols-2 gap-8'>
-                <div class='card'><h4>1. 분기 실적 vs 목표 추이</h4><div class='chart-container'><canvas id='chart_g_sales'></canvas></div></div>
+                <div class='card'><h4>1. 실적 vs 목표 추이</h4><div class='chart-container'><canvas id='chart_g_sales'></canvas></div></div>
                 <div class='card'><h4>2. 마스터 역량 밸런스</h4><div class='chart-container'><canvas id='chart_g_radar'></canvas></div></div>
                 <div class='card'><h4>3. 실시간 상관관계 매트릭스</h4><div class='mt-4 overflow-x-auto'><table id='table_old' class='w-full text-[10px] text-left'></table></div></div>
                 <div class='card border-2 border-emerald-50 shadow-emerald-100 shadow-lg'><h4>4. 전략적 시차 보정 매트릭스 (4주)</h4><div class='mt-4 overflow-x-auto'><table id='table_new' class='w-full text-[10px] text-left'></table></div></div>
@@ -103,6 +107,9 @@
         const bSel = document.getElementById('bSel');
         const pSel = document.getElementById('pSel');
         const rSel = document.getElementById('rSel');
+        const periodMonthly = document.getElementById('periodMonthly');
+        const periodQuarterly = document.getElementById('periodQuarterly');
+        let periodMode = 'monthly';
 
         // 데이터 헬스 체크 정보 렌더링
         if (db.data_health) {
@@ -162,6 +169,40 @@
         };
         pSel.onchange = update;
         rSel.onchange = update;
+        periodMonthly.onclick = () => { periodMode = 'monthly'; syncPeriodButtons(); update(); };
+        periodQuarterly.onclick = () => { periodMode = 'quarterly'; syncPeriodButtons(); update(); };
+
+        function syncPeriodButtons() {
+            if (periodMode === 'monthly') {
+                periodMonthly.className = 'px-3 py-1 rounded-lg text-xs font-black bg-blue-600 text-white';
+                periodQuarterly.className = 'px-3 py-1 rounded-lg text-xs font-black bg-slate-200 text-slate-700';
+            } else {
+                periodMonthly.className = 'px-3 py-1 rounded-lg text-xs font-black bg-slate-200 text-slate-700';
+                periodQuarterly.className = 'px-3 py-1 rounded-lg text-xs font-black bg-blue-600 text-white';
+            }
+        }
+
+        function normalizeMonthly(series) {
+            const src = (series || []).slice(0, 12);
+            while (src.length < 12) src.push(0);
+            return src.map(v => Number(v || 0));
+        }
+
+        function buildPeriodSeries(actualSeries, targetSeries) {
+            const actual = normalizeMonthly(actualSeries);
+            const target = normalizeMonthly(targetSeries);
+            if (periodMode === 'quarterly') {
+                const qActual = [0, 0, 0, 0];
+                const qTarget = [0, 0, 0, 0];
+                for (let i = 0; i < 12; i++) {
+                    const q = Math.floor(i / 3);
+                    qActual[q] += actual[i];
+                    qTarget[q] += target[i];
+                }
+                return { labels: ['1Q', '2Q', '3Q', '4Q'], actual: qActual, target: qTarget };
+            }
+            return { labels: Array.from({ length: 12 }, (_, i) => `${i + 1}월`), actual, target };
+        }
 
         function update() {
             const br = bSel.value; const prod = pSel.value; const rep = rSel.value;
@@ -188,7 +229,9 @@
         function renderGroup(data, ana, br, prod) {
             document.getElementById('v_achieve').innerText = (data.achieve || 0).toFixed(1) + "%";
             
-            const importance = ana.importance || {};
+            const importance = (ana.importance && Object.keys(ana.importance).length)
+                ? ana.importance
+                : { HIR: 0.4, RTR: 0.2, BCR: 0.2, PHR: 0.2 };
             const keys = Object.keys(importance);
             document.getElementById('v_driver').innerText = keys.length ? keys.reduce((a, b) => importance[a] > importance[b] ? a : b) : 'N/A';
             
@@ -198,17 +241,54 @@
             const totalActual = (data.monthly_actual || []).reduce((a,b)=>a+b, 0);
             document.getElementById('v_efficiency').innerText = (totalActual/1000000).toFixed(1) + "M";
 
+            const pSeries = buildPeriodSeries(data.monthly_actual, data.monthly_target);
             if(charts.gSales) charts.gSales.destroy();
             charts.gSales = new Chart(document.getElementById('chart_g_sales'), {
+                type: 'bar',
                 data: {
-                    labels: ['1월','2월','3월'],
+                    labels: pSeries.labels,
                     datasets: [
-                        { type: 'line', label: '달성률(%)', data: data.monthly_actual.map((act, i) => (act/(data.monthly_target[i]+1)*100).toFixed(1)), borderColor: '#ef4444', borderWidth: 2, yAxisID: 'y_sub', tension: 0.2 },
-                        { type: 'bar', label: '실적', data: data.monthly_actual, backgroundColor: '#2563eb', barPercentage: 0.5 },
-                        { type: 'bar', label: '목표', data: data.monthly_target, backgroundColor: '#e2e8f0', barPercentage: 0.8 }
+                        {
+                            type: 'bar',
+                            label: '실적',
+                            data: pSeries.actual,
+                            backgroundColor: 'rgba(37,99,235,0.85)',
+                            order: 2
+                        },
+                        {
+                            type: 'bar',
+                            label: '목표',
+                            data: pSeries.target,
+                            backgroundColor: 'rgba(203,213,225,0.7)',
+                            order: 3
+                        },
+                        {
+                            type: 'line',
+                            label: '달성률(%)',
+                            data: pSeries.actual.map((act, i) => {
+                                const t = pSeries.target[i] || 0;
+                                return +(t > 0 ? (act / t) * 100 : 0).toFixed(1);
+                            }),
+                            borderColor: '#ef4444',
+                            backgroundColor: 'rgba(239,68,68,0.1)',
+                            borderWidth: 2,
+                            pointRadius: 5,
+                            pointBackgroundColor: '#ef4444',
+                            tension: 0.3,
+                            yAxisID: 'y_sub',
+                            order: 1
+                        }
                     ]
                 },
-                options: { responsive: true, maintainAspectRatio: false, scales: { y:{ beginAtZero: true }, y_sub: { position: 'right', max:150, grid:{display:false} } } }
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index' },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
+                        y_sub: { position: 'right', min: 0, max: 150, grid: { display: false }, ticks: { callback: v => v + '%' } }
+                    }
+                }
             });
 
             if(charts.gRadar) charts.gRadar.destroy();
@@ -239,7 +319,7 @@
         }
 
         function renderIndividual(m, brAvg) {
-            const ach = (m.처방금액/(m.목표금액+1)*100).toFixed(1);
+            const ach = (m.목표금액 > 0 ? (m.처방금액 / m.목표금액) * 100 : 0).toFixed(1);
             document.getElementById('v_indiv_ach').innerText = ach + "%";
             document.getElementById('v_rank').innerText = (m.지점순위 || '-') + "위";
             const sKeys = Object.keys(m.shap || {});
@@ -247,12 +327,59 @@
             document.getElementById('v_indiv_eff').innerText = (m.efficiency/1000).toFixed(1) + "k/점";
             document.getElementById('v_gini').innerText = m.gini.toFixed(2) + (m.gini > 0.6 ? " (위험)" : " (양호)");
 
+            const pSeries = buildPeriodSeries(m.monthly_actual, m.monthly_target);
             if(charts.rShap) charts.rShap.destroy();
             charts.rShap = new Chart(document.getElementById('chart_r_shap'), { type:'bar', data:{ labels:Object.keys(m.shap), datasets:[{ label:'기여도', data:Object.values(m.shap), backgroundColor:'#6366f1' }] }, options:{ responsive:true, maintainAspectRatio:false, indexAxis:'y' } });
             if(charts.rPm) charts.rPm.destroy();
             charts.rPm = new Chart(document.getElementById('chart_r_pm'), { type:'scatter', data:{ datasets:m.prod_matrix.map(p=>({label:p.name, data:[{x:p.ms, y:p.growth}], backgroundColor:p.ms>15?'#10b981':'#f59e0b'})) }, options:{ responsive:true, maintainAspectRatio:false } });
             if(charts.rSales) charts.rSales.destroy();
-            charts.rSales = new Chart(document.getElementById('chart_r_sales'), { type:'bar', data:{ labels:['1월','2월','3월'], datasets:[{label:'달성률(%)', type:'line', data:m.monthly_actual.map((act,i)=>(act/(m.monthly_target[i]+1)*100).toFixed(1)), borderColor:'#ef4444', yAxisID: 'y_sub'}, {label:'실적', data:m.monthly_actual, backgroundColor:'#3b82f6'}, {label:'목표', data:m.monthly_target, backgroundColor:'#e2e8f0'}] }, options:{ responsive:true, maintainAspectRatio:false, scales: { y_sub: { position: 'right', max:150, grid:{display:false} } } } });
+            charts.rSales = new Chart(document.getElementById('chart_r_sales'), {
+                type: 'bar',
+                data: {
+                    labels: pSeries.labels,
+                    datasets: [
+                        {
+                            type: 'bar',
+                            label: '실적',
+                            data: pSeries.actual,
+                            backgroundColor: 'rgba(59,130,246,0.85)',
+                            order: 2
+                        },
+                        {
+                            type: 'bar',
+                            label: '목표',
+                            data: pSeries.target,
+                            backgroundColor: 'rgba(203,213,225,0.7)',
+                            order: 3
+                        },
+                        {
+                            type: 'line',
+                            label: '달성률(%)',
+                            data: pSeries.actual.map((act, i) => {
+                                const t = pSeries.target[i] || 0;
+                                return +(t > 0 ? (act / t) * 100 : 0).toFixed(1);
+                            }),
+                            borderColor: '#ef4444',
+                            backgroundColor: 'rgba(239,68,68,0.1)',
+                            borderWidth: 2,
+                            pointRadius: 5,
+                            pointBackgroundColor: '#ef4444',
+                            tension: 0.3,
+                            yAxisID: 'y_sub',
+                            order: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index' },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
+                        y_sub: { position: 'right', min: 0, max: 150, grid: { display: false }, ticks: { callback: v => v + '%' } }
+                    }
+                }
+            });
             if(charts.rRadar) charts.rRadar.destroy();
             const rL = ['HIR', 'RTR', 'BCR', 'PHR'];
             charts.rRadar = new Chart(document.getElementById('chart_r_radar'), { type:'radar', data:{ labels:['HIR','RTR','BCR','PHR'], datasets:[{label:m.성명, data:rL.map(k=>m[k]), borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.3)'}, {label:'지점평균', data:rL.map(k=>brAvg[k]), borderDash:[5,5], borderColor:'#94a3b8'}] }, options:{ responsive:true, maintainAspectRatio:false, scales:{r:{min:0, max:100, ticks:{display:false}}} } });

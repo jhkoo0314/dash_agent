@@ -39,9 +39,15 @@ def load_mapping_config():
         with open(config_path, 'r', encoding='utf-8') as f:
             return json.load(f)
     return {
-        "지점": ["지점", "Branch"], "성명": ["성명", "Rep"], "품목": ["품목", "Product"],
-        "처방금액": ["처방금액", "Amount"], "목표금액": ["목표금액", "Target"],
-        "월": ["월", "Month"], "activities": ["activities", "활동"], "segment": ["segment", "규모"]
+        "지점": ["지점", "지점명", "Branch"], 
+        "성명": ["성명", "담당자명", "Rep", "담당자"], 
+        "품목": ["품목", "품목명", "Product"],
+        "처방금액": ["처방금액", "실적금액", "Amount", "실적"], 
+        "목표금액": ["목표금액", "Target"],
+        "월": ["월", "목표월", "Month"], 
+        "activities": ["activities", "활동", "활동명"], 
+        "segment": ["segment", "규모", "종별코드명"],
+        "날짜": ["날짜", "활동일자", "목표월", "Date"]
     }
 
 def save_mapping_config(mapping_dict):
@@ -144,8 +150,8 @@ with st.expander("📂 STEP 1. 데이터 선택 및 통합", expanded=True):
     available_files = []
     for d in data_dirs:
         if os.path.exists(d):
-            csvs = glob.glob(os.path.join(d, "*.csv"))
-            available_files.extend(csvs)
+            files = glob.glob(os.path.join(d, "*.csv")) + glob.glob(os.path.join(d, "*.xlsx"))
+            available_files.extend(files)
     
     st.info(f"🔍 시스템이 {len(available_files)}개의 분석 가능한 파일을 찾았습니다.")
     
@@ -157,7 +163,7 @@ with st.expander("📂 STEP 1. 데이터 선택 및 통합", expanded=True):
     )
     
     # 추가 업로드 기능 유지
-    uploaded_files = st.file_uploader("그 외 추가로 업로드할 파일이 있다면 선택하세요", type="csv", accept_multiple_files=True)
+    uploaded_files = st.file_uploader("그 외 추가로 업로드할 파일이 있다면 선택하세요", type=["csv", "xlsx"], accept_multiple_files=True)
     
     all_data_sources = selected_files + (uploaded_files if uploaded_files else [])
     
@@ -166,9 +172,15 @@ with st.expander("📂 STEP 1. 데이터 선택 및 통합", expanded=True):
         df_list = []
         for f in all_data_sources:
             if isinstance(f, str): # 경로 문자열인 경우 (자동 탐색)
-                df_list.append(pd.read_csv(f))
+                if f.endswith('.xlsx'):
+                    df_list.append(pd.read_excel(f))
+                else:
+                    df_list.append(pd.read_csv(f))
             else: # 업로드된 파일 객체인 경우
-                df_list.append(pd.read_csv(f))
+                if f.name.endswith('.xlsx'):
+                    df_list.append(pd.read_excel(f))
+                else:
+                    df_list.append(pd.read_csv(f))
         
         raw_df = pd.concat(df_list, ignore_index=True)
         st.success(f"✅ 총 {len(all_data_sources)}개 데이터 소스 통합 완료 (총 {len(raw_df):,}건)")
@@ -216,6 +228,83 @@ with st.expander("📂 STEP 1. 데이터 선택 및 통합", expanded=True):
                 # 중복된 매핑 제거 (동일한 원본 컬럼이 다른 이름으로 두 번 매핑될 때 마지막 것 유지)
                 df_std = raw_df.copy()
                 df_std = df_std.rename(columns=rename_map)
+
+                # 사용자 선택 컬럼을 최우선으로 activities에 강제 반영
+                if m_act in raw_df.columns:
+                    df_std['activities'] = raw_df[m_act]
+
+                # 활동명 매핑 보정:
+                # rename 이후 컬럼이 바뀌어도 raw_df의 원본 활동 컬럼을 우선 사용해 activities를 복구한다.
+                activity_source_cols = []
+                if m_act in raw_df.columns:
+                    activity_source_cols.append(m_act)
+                for col in raw_df.columns:
+                    col_str = str(col)
+                    col_esc = col_str.encode('unicode_escape').decode()
+                    if col_str in ['activities', 'activity', 'Activity'] or ('\\ud65c\\ub3d9' in col_esc):
+                        activity_source_cols.append(col)
+                activity_source_cols = list(dict.fromkeys(activity_source_cols))
+
+                if activity_source_cols:
+                    act_series = pd.Series(np.nan, index=raw_df.index, dtype='object')
+                    for col in activity_source_cols:
+                        src = raw_df[col]
+                        src = src.where(src.notna() & (src.astype(str).str.strip() != ''), np.nan)
+                        act_series = act_series.fillna(src)
+                    df_std['activities'] = act_series
+
+                # 선택한 activity 컬럼을 "병합" 형태로 보강:
+                # CRM 행에만 있는 활동값을 키 기준으로 전체 행에 전파한다.
+                if 'activities' in df_std.columns:
+                    df_std['activities'] = df_std['activities'].astype('object')
+                    df_std['activities'] = df_std['activities'].where(
+                        df_std['activities'].notna() & (df_std['activities'].astype(str).str.strip() != ''),
+                        np.nan
+                    )
+
+                    # 월 키 생성 (날짜/활동일자/목표월/월 중 가용 컬럼 사용)
+                    month_src = None
+                    for c in ['날짜', '활동일자', '목표월', '월']:
+                        if c in df_std.columns:
+                            month_src = c
+                            break
+                    if month_src is not None:
+                        parsed_month = pd.to_datetime(df_std[month_src], errors='coerce').dt.month
+                        if parsed_month.notna().sum() <= len(df_std) * 0.3:
+                            parsed_month = pd.to_numeric(df_std[month_src], errors='coerce')
+                        df_std['__act_month'] = parsed_month
+                    else:
+                        df_std['__act_month'] = np.nan
+
+                    key_candidates = ['지점', '성명', '품목', '병원ID', '__act_month']
+                    merge_keys = [k for k in key_candidates if k in df_std.columns]
+                    merge_keys = [k for k in merge_keys if not df_std[k].isna().all()]
+
+                    if merge_keys:
+                        donors = df_std[df_std['activities'].notna()].copy()
+                        if not donors.empty:
+                            valid_keys = [k for k in merge_keys if donors[k].notna().sum() > 0 and len(donors[donors[k] != 'nan']) > 0]
+                            if valid_keys:
+                                for k in valid_keys:
+                                    if donors[k].dtype == object:
+                                        donors[k] = donors[k].astype(str).str.strip().replace('nan', np.nan)
+                                        df_std[k] = df_std[k].astype(str).str.strip().replace('nan', np.nan)
+                                
+                                act_map = (
+                                    donors.groupby(valid_keys)['activities']
+                                    .agg(lambda s: s.mode().iat[0] if not s.mode().empty else s.iloc[0])
+                                    .reset_index()
+                                    .rename(columns={'activities': '__activities_mapped'})
+                                )
+                                df_std = df_std.merge(act_map, on=valid_keys, how='left')
+                                df_std['activities'] = df_std['activities'].fillna(df_std['__activities_mapped'])
+                                df_std = df_std.drop(columns=['__activities_mapped'])
+
+                    if '__act_month' in df_std.columns:
+                        df_std = df_std.drop(columns=['__act_month'])
+
+                if 'activities' in df_std.columns and df_std['activities'].notna().sum() == 0:
+                    st.warning("활동(Activity) 매핑 결과가 비어 있습니다. CRM의 '활동명' 컬럼 선택 여부를 확인하세요.")
                 
                 # 디버깅: 매핑 결과 확인
                 if '날짜' not in df_std.columns:
@@ -229,7 +318,9 @@ with st.expander("📂 STEP 1. 데이터 선택 및 통합", expanded=True):
                 
                 # 처방수량 부재 시 처방금액 기반 가상 생성 (분석용)
                 if '처방수량' not in df_std.columns:
-                    df_std['처방수량'] = (df_std['처방금액'] / 1000).astype(int)
+                    amt = pd.to_numeric(df_std['처방금액'], errors='coerce')
+                    qty = (amt / 1000).replace([np.inf, -np.inf], np.nan).fillna(0)
+                    df_std['처방수량'] = qty.astype(int)
                 
                 # 💡 6대 지표 마스터 엔진 가동
                 st.session_state.clean_master = calculate_master_engine(df_std, CONFIG)
