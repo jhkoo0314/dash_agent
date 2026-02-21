@@ -1,0 +1,9 @@
+# Project Specific Exclusions
+data/
+output/
+
+# Python Exclusions
+__pycache__/
+*.pyc
+.env
+.DS_Store
