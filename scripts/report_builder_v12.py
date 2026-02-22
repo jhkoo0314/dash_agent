@@ -701,16 +701,16 @@ def build_final_reports(external_config=None):
     
     # 정규표현식으로 'const db = /*DATA_JSON_PLACEHOLDER*/ { ... };' 패턴을 찾아 전체 교체
     # 패턴: 'const db = ' 뒤에 주석 혹은 데이터가 오고 세미콜론으로 끝나는 지점까지
-    pattern = r'const db = /\*DATA_JSON_PLACEHOLDER\*/ .*?;'
+    pattern = r'const\s+db\s*=\s*/\*DATA_JSON_PLACEHOLDER\*/\s*.*?;'
     replacement = f'const db = {total_json};'
     
-    if re.search(pattern, template):
-        template = re.sub(pattern, replacement, template)
+    if re.search(pattern, template, flags=re.S):
+        template = re.sub(pattern, replacement, template, count=1, flags=re.S)
         print("[INFO] 템플릿 데이터 주입 완료 (정규표현식 매칭)")
     elif '/*DATA_JSON_PLACEHOLDER*/' in template:
         # 정규표현식이 실패할 경우를 대비한 단순 문자열 교체 시도
         # 템플릿의 초기 객체 구조와 상관없이 주석 위치를 기준으로 교체
-        template = re.sub(r'/\*DATA_JSON_PLACEHOLDER\*/ .*?;', f'{total_json};', template)
+        template = re.sub(r'/\*DATA_JSON_PLACEHOLDER\*/\s*.*?;', f'{total_json};', template, count=1, flags=re.S)
         print("[INFO] 템플릿 데이터 주입 완료 (주석 기준 매칭)")
     else:
         print("[ERROR] 템플릿에서 데이터 주입 지점(DATA_JSON_PLACEHOLDER)을 찾을 수 없습니다.")

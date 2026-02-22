@@ -2,7 +2,7 @@
 <html lang='ko'>
 <head>
     <meta charset='UTF-8'>
-    <title>전사 SFE Strategic Master Report</title>
+    <title>{{BRANCH_NAME}} SFE Strategic Master Report</title>
     <script src='https://cdn.tailwindcss.com'></script>
     <script src='https://cdn.jsdelivr.net/npm/chart.js'></script>
     <script src='https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation'></script>
@@ -26,12 +26,12 @@
         <header class='flex justify-between items-center mb-10'>
             <div>
                 <h1 class='text-4xl font-black text-slate-900 tracking-tighter'>SFE STRATEGIC <span class='text-blue-600'>INTEL V13</span></h1>
-                <p id='viewTitle' class='text-slate-500 font-bold text-xs mt-1 uppercase tracking-[0.2em]'>전사 마스터 통합 리포트</p>
+                <p id='viewTitle' class='text-slate-500 font-bold text-xs mt-1 uppercase tracking-[0.2em]'>{{BRANCH_NAME}} 마스터 통합 리포트</p>
             </div>
             <div class='flex flex-col items-end gap-2'>
                 <p id='dataRefDate' class='text-blue-500 font-black text-sm uppercase tracking-widest'>Data as of: -</p>
                 <div class='flex gap-3'>
-                    <select id='bSel' class='v-block'><option value='TOTAL'>전체 지점</option></select>
+                    <select id='bSel' class='{{BRANCH_FILTER_CLASS}}'><option value='TOTAL'>전체 지점</option></select>
                     <select id='pSel'><option value='ALL'>모든 품목</option></select>
                     <select id='rSel'><option value='NONE'>담당자 상세 선택</option></select>
                 </div>
@@ -241,7 +241,7 @@
                                 거래처 포트폴리오 상태를 분석 중입니다.
                             </p>
                             <p id='coverage_text' class='text-sm font-black text-indigo-700'>
-                                거래처 장악력: -
+                                거래처 커버리지: -
                             </p>
                         </div>
                     </div>
@@ -253,53 +253,44 @@
     <script>
         const db = /*DATA_JSON_PLACEHOLDER*/ {
             branches: {
-                "테스트지점": {
+                "서울지점": {
                     members: [
                         {
                             "성명": "홍길동",
-                            "HIR": 74.2,
-                            "RTR": 68.5,
-                            "BCR": 71.3,
-                            "PHR": 69.8,
-                            "PI": 92.4,
-                            "FGR": 7.6,
-                            "처방금액": 124000000,
-                            "목표금액": 132000000,
+                            "HIR": 85.0, "RTR": 78.0, "BCR": 92.0, "PHR": 95.0,
+                            "처방금액": 120000000, "목표금액": 100000000,
                             "지점순위": 1,
-                            "efficiency": 310000,
-                            "sustainability": 78.5,
-                            "gini": 0.34,
-                            "coach_scenario": "The Hard Worker",
-                            "coach_action": "핵심 거래처 집중도를 완화하고 고성장 품목 비중을 확대하세요.",
-                            "shap": { "PT": 0.16, "시연": 0.11, "클로징": 0.14, "니즈환기": 0.09, "대면": 0.15, "컨택": 0.12, "접근": 0.13, "피드백": 0.10 },
+                            "shap": {"HIR": 0.4, "RTR": 0.3, "BCR": 0.2, "PHR": 0.1},
+                            "coach_scenario": "The Masterclass",
+                            "coach_action": "완벽한 선순환을 만들어내고 있습니다. 현재의 높은 활동량과 우수한 관계 유지 능력을 유지하며 Best Practice 사례로 공유를 권장합니다.",
+                            "efficiency": 120.5,
+                            "sustainability": 88.5,
+                            "gini": 0.25,
+                            "avg_ms": 15.0,
                             "prod_matrix": [
-                                { "name": "테스트품목A", "ms": 42.0, "growth": 8.1 },
-                                { "name": "테스트품목B", "ms": 28.0, "growth": 5.4 },
-                                { "name": "테스트품목C", "ms": 30.0, "growth": 3.2 }
+                                {"name": "인수액", "ms": 20.0, "growth": 5.0},
+                                {"name": "인슐정", "ms": 10.0, "growth": -2.0}
                             ],
-                            "monthly_actual": [8000000, 9000000, 10000000, 9500000, 11000000, 10500000, 9800000, 10200000, 10700000, 10900000, 11200000, 11400000],
-                            "monthly_target": [8500000, 9200000, 9800000, 9900000, 10800000, 10700000, 10000000, 10300000, 10600000, 11000000, 11300000, 11500000]
+                            "monthly_actual": [8000000, 9000000, 8500000, 11000000, 10000000, 12000000, 10500000, 11500000, 13000000, 12500000, 14000000, 15000000],
+                            "monthly_target": [9000000, 9000000, 9000000, 10000000, 10000000, 10000000, 11000000, 11000000, 12000000, 12000000, 13000000, 14000000]
                         }
                     ],
-                    avg: { "HIR": 72.0, "RTR": 67.0, "BCR": 70.0, "PHR": 68.0, "PI": 90.0, "FGR": 5.0 },
-                    achieve: 93.9,
-                    monthly_actual: [8000000, 9000000, 10000000, 9500000, 11000000, 10500000, 9800000, 10200000, 10700000, 10900000, 11200000, 11400000],
-                    monthly_target: [8500000, 9200000, 9800000, 9900000, 10800000, 10700000, 10000000, 10300000, 10600000, 11000000, 11300000, 11500000],
-                    analysis: { importance: { "PT": 0.16, "시연": 0.11, "클로징": 0.14, "니즈환기": 0.09, "대면": 0.15, "컨택": 0.12, "접근": 0.13, "피드백": 0.10 }, correlation: {}, adj_correlation: {}, ccf: [0.03, 0.05, 0.04, 0.02, 0.01] },
-                    prod_analysis: {}
+                    avg: { HIR: 75.0, RTR: 70.0, BCR: 80.0, PHR: 85.0, PI: 95.0, FGR: 5.0 },
+                    achieve: 110.5,
+                    monthly_actual: [8000000, 9000000, 8500000, 11000000, 10000000, 12000000, 10500000, 11500000, 13000000, 12500000, 14000000, 15000000],
+                    monthly_target: [9000000, 9000000, 9000000, 10000000, 10000000, 10000000, 11000000, 11000000, 12000000, 12000000, 13000000, 14000000]
                 }
             },
-            products: [],
-            total_prod_analysis: {},
+            products: ["인수액", "인슐정"],
             total: {
-                achieve: 93.9,
-                avg: { "HIR": 72.0, "RTR": 67.0, "BCR": 70.0, "PHR": 68.0, "PI": 90.0, "FGR": 5.0 },
-                monthly_actual: [8000000, 9000000, 10000000, 9500000, 11000000, 10500000, 9800000, 10200000, 10700000, 10900000, 11200000, 11400000],
-                monthly_target: [8500000, 9200000, 9800000, 9900000, 10800000, 10700000, 10000000, 10300000, 10600000, 11000000, 11300000, 11500000],
-                analysis: { importance: { "PT": 0.16, "시연": 0.11, "클로징": 0.14, "니즈환기": 0.09, "대면": 0.15, "컨택": 0.12, "접근": 0.13, "피드백": 0.10 }, correlation: {}, adj_correlation: {}, ccf: [0.03, 0.05, 0.04, 0.02, 0.01] }
+                achieve: 110.5,
+                avg: { HIR: 75.0, RTR: 70.0, BCR: 80.0, PHR: 85.0 },
+                monthly_actual: [8000000, 9000000, 8500000, 11000000, 10000000, 12000000, 10500000, 11500000, 13000000, 12500000, 14000000, 15000000],
+                monthly_target: [9000000, 9000000, 9000000, 10000000, 10000000, 10000000, 11000000, 11000000, 12000000, 12000000, 13000000, 14000000]
             },
-            total_avg: { "HIR": 72.0, "RTR": 67.0, "BCR": 70.0, "PHR": 68.0, "PI": 90.0, "FGR": 5.0 },
-            missing_data: []
+            total_avg: { HIR: 75.0, RTR: 70.0, BCR: 80.0, PHR: 85.0 },
+            missing_data: [],
+            data_health: { integrity_score: 100, mapped_fields: {"Sales_지점": "OK", "Target_지점": "OK"}, missing_fields: [] }
         };
         let charts = {};
         const bSel = document.getElementById('bSel');
@@ -980,6 +971,4 @@
     </script>
 </body>
 </html>
-
-
 
