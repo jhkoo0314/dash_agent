@@ -521,23 +521,23 @@ def build_final_reports(external_config=None):
         print("[CRITICAL] df_final is empty. There is no matching data between sales and targets.")
 
     # --- [코칭 룰 엔진] ---
-    def get_coaching_message(hir, rtr, bcr, ach):
+    def get_coaching_message(hir, rtr, bcr, ach, th_hir=70, th_rtr=70, th_bcr=70, th_ach=100):
         # 마스터 로직 코칭 룰 
-        if ach >= 100:
-            if hir >= 70 and rtr >= 70:
+        if ach >= th_ach:
+            if hir >= th_hir and rtr >= th_rtr:
                 return "The Masterclass", "현재의 높은 활동량과 우수한 관계 유지 능력을 유지하세요. Best Practice 사례로 공유를 권장합니다."
-            elif hir < 70 and rtr >= 70:
+            elif hir < th_hir and rtr >= th_rtr:
                 return "The Relationship Builder", "고객과의 관계는 훌륭하나 활동량이 다소 부족합니다. 방문 커버리지를 늘려 파이프라인을 확장하세요."
-            elif hir >= 70 and rtr < 70:
+            elif hir >= th_hir and rtr < th_rtr:
                 return "The Volume Driver", "활동량은 우수하나 관계 깊이가 아쉽습니다. 핵심 고객층에 대한 심층적이고 퀄리티 높은 디테일링이 필요합니다."
             else:
                 return "The Lucky Star", "데이터상 유효행동과 관계온도가 낮음에도 목표를 달성했습니다. 외부 요인(시장 상황 등)이나 일회성 매출 여부를 점검하세요."
         else:
-            if hir >= 70 and bcr < 70:
+            if hir >= th_hir and bcr < th_bcr:
                 return "The Erratic Sprinter", "활동량은 많으나 방문이 불규칙합니다. 사전 계획(PHR)을 철저히 기획하여 균일하게 방문 일정을 안배하세요."
-            elif rtr < 70 and bcr >= 70:
+            elif rtr < th_rtr and bcr >= th_bcr:
                 return "The Routine Visitor", "규칙적으로 꾸준히 방문하나 고객과의 관계 온도가 낮습니다. 단순 제품 전달을 넘어선 솔루션 제안(PT/니즈환기) 스킬 교육이 시급합니다."
-            elif hir < 70 and bcr < 70:
+            elif hir < th_hir and bcr < th_bcr:
                 return "The Ghost Hunter", "활동량과 규칙성 모두 저조합니다. 근태 및 일일 활동 계획에 대한 밀착 코칭과 파이프라인 전면 재설계가 필요합니다."
             else:
                 return "The Hard Worker", "성실하게 양질의 활동을 수행하고 있으나 성과로 이어지지 않고 있습니다. 타겟팅(Segment)이나 주력 품목(MS) 전략의 재점검이 필요합니다."
@@ -562,6 +562,30 @@ def build_final_reports(external_config=None):
             how='inner'
         )
     )
+
+    # 2.5 대표(Rep) 레벨 지표 정규화 (변별력 확보)
+    # 개별 품목 T-score의 평균을 쓰면 변별력이 사라지므로(평균회귀), Rep 레벨에서 Raw 점수를 다시 T-score화
+    df_rep_raw_calc = df_final.groupby(['지점', '성명']).agg({
+        'HIR_raw': 'mean',
+        'RTR_raw': 'mean',
+        'BCR_raw': 'mean',
+        '처방금액': 'sum',
+        '목표금액': 'sum'
+    }).reset_index()
+    
+    df_rep_raw_calc['REP_HIR'] = t_score(df_rep_raw_calc['HIR_raw'].values, T_MEAN, T_STD)
+    df_rep_raw_calc['REP_RTR'] = t_score(df_rep_raw_calc['RTR_raw'].values, T_MEAN, T_STD)
+    df_rep_raw_calc['REP_BCR'] = t_score(df_rep_raw_calc['BCR_raw'].values, T_MEAN, T_STD)
+    df_rep_raw_calc['REP_ACH'] = (df_rep_raw_calc['처방금액'] / df_rep_raw_calc['목표금액'] * 100).fillna(0)
+    
+    # 동적 Threshold (중앙값) 계산
+    th_hir = float(df_rep_raw_calc['REP_HIR'].median())
+    th_rtr = float(df_rep_raw_calc['REP_RTR'].median())
+    th_bcr = float(df_rep_raw_calc['REP_BCR'].median())
+    # 달성률은 100%를 기준으로 하되, 전반적으로 낮으면 중앙값 사용 고려 가능하나 일단 100 유지 또는 하향 조정
+    th_ach = 100.0 if df_rep_raw_calc['REP_ACH'].max() >= 100 else float(df_rep_raw_calc['REP_ACH'].median())
+    
+    print(f"DEBUG: Coaching Thresholds -> HIR:{th_hir:.1f}, RTR:{th_rtr:.1f}, BCR:{th_bcr:.1f}, ACH:{th_ach:.1f}")
 
     for br in df_final['지점'].unique():
         df_br = df_final[df_final['지점'] == br]
@@ -612,17 +636,19 @@ def build_final_reports(external_config=None):
             avg_ms = float(sum(ms_values) / len(ms_values)) if ms_values else 0.0
             
             # 코칭 메시지 연산
-            rep_hir = float(df_rep['HIR'].mean())
-            rep_rtr = float(df_rep['RTR'].mean())
-            rep_bcr = float(df_rep['BCR'].mean())
-            rep_ach = calc_achieve(df_rep['처방금액'].sum(), df_rep['목표금액'].sum())
-            c_name, c_action = get_coaching_message(rep_hir, rep_rtr, rep_bcr, rep_ach)
+            rep_stats = df_rep_raw_calc[df_rep_raw_calc['성명'] == rep].iloc[0]
+            rep_hir = float(rep_stats['REP_HIR'])
+            rep_rtr = float(rep_stats['REP_RTR'])
+            rep_bcr = float(rep_stats['REP_BCR'])
+            rep_ach = float(rep_stats['REP_ACH'])
+            
+            c_name, c_action = get_coaching_message(rep_hir, rep_rtr, rep_bcr, rep_ach, th_hir, th_rtr, th_bcr, th_ach)
 
             # Dog(Low MS / Low Growth) 또는 Question Mark(Low MS / High Growth) 파악 
             # (단순화를 위해 ms가 평균 미만인 주력/비주력 품목 중 의미 있는 볼륨 추적)
-            weak_products = [p['name'] for p in prod_matrix if p['ms'] > 0 and p['ms'] < avg_ms]
+            weak_products = [p['name'] for p in prod_matrix if p['ms'] > 0 and p['ms'] < (avg_ms * 0.7) and p['growth'] < 0]
             if weak_products:
-                c_action += f" (🚨 주의: {', '.join(weak_products)} 품목이 Dog/Question Mark 영역에 위치해 있습니다. 품목 전략 재수립이 필요합니다.)"
+                c_action += f" (🚨 주의: {', '.join(weak_products)} 품목이 Dog 영역에 위치해 있습니다. 품목 성장이 저조하므로 타겟팅 전략 재수립이 필요합니다.)"
 
             hierarchy['branches'][br]['members'].append({
                 '성명': rep,
