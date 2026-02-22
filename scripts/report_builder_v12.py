@@ -20,18 +20,41 @@ def calc_gini(x):
     n = len(x)
     return (np.sum((2 * np.arange(1, n + 1) - n - 1) * x)) / (n * np.sum(x))
 
+# 8대 유효 행동 기준 리스트
+ATOMIC_BEHAVIORS = ['PT', '시연', '클로징', '니즈환기', '대면', '컨택', '접근', '피드백']
+
 def run_full_analysis(target_df):
-    if len(target_df) < 3: return None
+    if len(target_df) < 5: return None
     try:
-        X = target_df[['HIR', 'RTR', 'BCR', 'PHR']]
+        # X: 8 Atomic Behaviors, Y: 처방금액
+        # 만약 데이터프레임에 해당 8대 행동 컬럼이 없다면 0으로 채움
+        for b in ATOMIC_BEHAVIORS:
+            if b not in target_df.columns:
+                target_df[b] = 0.0
+
+        X = target_df[ATOMIC_BEHAVIORS]
         y = target_df['처방금액']
-        rf = RandomForestRegressor(n_estimators=30, random_state=42).fit(X, y)
+        
+        # 값이 전부 0이면 분석 포기
+        if X.sum().sum() == 0 or y.sum() == 0:
+            return None
+
+        rf = RandomForestRegressor(n_estimators=50, random_state=42).fit(X, y)
         importance = dict(zip(X.columns, rf.feature_importances_))
-        ccf = [float(np.nan_to_num(y.corr(X['HIR'].shift(i)))) for i in range(5)]
-        corr_raw = target_df[['처방금액', 'HIR', 'RTR', 'BCR', 'PHR']].corr(method='spearman').fillna(0).to_dict()
-        adj_corr = target_df[['처방금액', 'HIR', 'RTR', 'BCR', 'PHR']].corr(method='spearman').fillna(0)
-        return {'importance': importance, 'ccf': ccf, 'correlation': corr_raw, 'adj_correlation': adj_corr.to_dict()}
-    except: return None
+        
+        # CCF 및 상관관계는 기존 지표(HIR, RTR, BCR, PHR) 유지
+        metrics_cols = ['HIR', 'RTR', 'BCR', 'PHR']
+        for m in metrics_cols:
+            if m not in target_df.columns: target_df[m] = 70.0
+
+        ccf = [float(np.nan_to_num(y.corr(target_df['HIR'].shift(i)))) for i in range(5)]
+        corr_raw = target_df[['처방금액'] + metrics_cols].corr(method='spearman').fillna(0).to_dict()
+        adj_corr = target_df[['처방금액'] + metrics_cols].corr(method='spearman').fillna(0).to_dict()
+        
+        return {'importance': importance, 'ccf': ccf, 'correlation': corr_raw, 'adj_correlation': adj_corr}
+    except Exception as e: 
+        print(f"[WARN] run_full_analysis error: {e}")
+        return None
 
 # --- [유틸리티: 필드 매핑 엔진] ---
 def load_mapping_config():
@@ -401,12 +424,25 @@ def build_final_reports(external_config=None):
             print(f"[WARN] T-Score 설정 로드 실패: {e}")
             T_MEAN, T_STD = 70.0, 10.0
 
-    # 2. 지표 연산
+    # 2. 지표 연산 및 8대 행동 Atomic 파싱
+    # W_ACT 딕셔너리를 기반으로 activities 컬럼의 문장을 파싱해서 빈도/가중치 체크
     w_act_map = {str(k).strip(): v for k, v in W_ACT.items()}
     df_raw['activities'] = df_raw['activities'].astype(str).str.strip()
-    df_raw['HIR_W'] = df_raw['activities'].map(w_act_map).fillna(1.0)
+    
+    # 각 row (방문/Call) 별로 8대 행동 점수 매핑 (Atomic Split)
+    for b in ATOMIC_BEHAVIORS:
+        # activities 내에 해당 단어가 포함되어있으면 1.0 (또는 해당 가중치), 아니면 0.0
+        df_raw[b] = df_raw['activities'].apply(lambda x: 1.0 if b in x else 0.0)
+    
+    # 전체 HIR 연산을 위해: 8대 행동 * 가중치의 합
+    df_raw['HIR_W'] = 0.0
+    for b in ATOMIC_BEHAVIORS:
+        weight = float(w_act_map.get(b, 1.0))
+        df_raw['HIR_W'] += df_raw[b] * weight
+        
     df_raw['SEG_W'] = df_raw['segment'].map(W_SEG).fillna(1.0)
 
+    # RTR: 날짜_ts 감쇠 로직 $exp(-0.035 \times t)$
     df_raw['날짜_ts'] = pd.to_datetime(df_raw['날짜'], errors='coerce')
     current_time = pd.Timestamp.now()
     t_days = (current_time - df_raw['날짜_ts']).dt.days.clip(lower=0)
@@ -416,18 +452,27 @@ def build_final_reports(external_config=None):
     print(f"DEBUG: df_raw columns: {df_raw.columns.tolist()}")
 
     group_cols = ['지점', '성명', '품목', '__k_branch', '__k_rep', '__k_prod']
-    actual_agg = df_raw.groupby(group_cols).agg({'처방금액': 'sum', '처방수량': 'sum', 'HIR_W': 'mean', 'RTR_raw': 'mean'}).reset_index()
+    
+    # 각 그룹별로 Atomic 8 행동 총합 계산
+    atomic_agg_dict = {b: 'sum' for b in ATOMIC_BEHAVIORS}
+    agg_dict = {'처방금액': 'sum', '처방수량': 'sum', 'HIR_W': 'mean', 'RTR_raw': 'mean'}
+    agg_dict.update(atomic_agg_dict)
+    
+    actual_agg = df_raw.groupby(group_cols).agg(agg_dict).reset_index()
     print(f"DEBUG: actual_agg shape: {actual_agg.shape}")
 
+    # BCR: 방문 간격 표준편차 $\sigma$ 유도. 일관성이 높으면 표준편차 낮음
     df_sorted = df_raw.sort_values(group_cols + ['날짜_ts'])
     df_sorted['interval'] = df_sorted.groupby(group_cols)['날짜_ts'].diff().dt.days
-    bcr_raw = df_sorted.groupby(group_cols)['interval'].std().fillna(0).reset_index(name='BCR_raw')
-    bcr_raw['BCR_raw'] = -bcr_raw['BCR_raw']
+    # 역수로 해서 값이 클수록(규칙적일수록) 좋게 구성 (interval std가 작을수록 좋음)
+    # 0 분모 방지 위해 + 1
+    bcr_raw = df_sorted.groupby(group_cols)['interval'].apply(lambda x: 1.0 / (np.std(x) + 1.0) if len(x) > 1 else 0).reset_index(name='BCR_raw')
 
-    hir_raw = df_raw.groupby(group_cols).apply(lambda x: (x['HIR_W'] * x['SEG_W']).sum() / len(x), include_groups=False).reset_index(name='HIR_raw')
+    hir_raw = df_raw.groupby(group_cols).apply(lambda x: (x['HIR_W'] * x['SEG_W']).sum() / len(x) if len(x)>0 else 0, include_groups=False).reset_index(name='HIR_raw')
     df_master = pd.merge(actual_agg, hir_raw, on=group_cols)
     df_master = pd.merge(df_master, bcr_raw, on=group_cols, how='left')
     
+    # 마스터 시트에서 가져온 T_MEAN, T_STD 로 가중평균 환산 (T-Score)
     df_master['HIR'] = t_score(df_master['HIR_raw'].values, T_MEAN, T_STD)
     df_master['RTR'] = t_score(df_master['RTR_raw'].values, T_MEAN, T_STD)
     df_master['BCR'] = t_score(df_master['BCR_raw'].values, T_MEAN, T_STD)
@@ -475,6 +520,28 @@ def build_final_reports(external_config=None):
     if df_final.empty:
         print("[CRITICAL] df_final is empty. There is no matching data between sales and targets.")
 
+    # --- [코칭 룰 엔진] ---
+    def get_coaching_message(hir, rtr, bcr, ach):
+        # 마스터 로직 코칭 룰 
+        if ach >= 100:
+            if hir >= 70 and rtr >= 70:
+                return "The Masterclass", "현재의 높은 활동량과 우수한 관계 유지 능력을 유지하세요. Best Practice 사례로 공유를 권장합니다."
+            elif hir < 70 and rtr >= 70:
+                return "The Relationship Builder", "고객과의 관계는 훌륭하나 활동량이 다소 부족합니다. 방문 커버리지를 늘려 파이프라인을 확장하세요."
+            elif hir >= 70 and rtr < 70:
+                return "The Volume Driver", "활동량은 우수하나 관계 깊이가 아쉽습니다. 핵심 고객층에 대한 심층적이고 퀄리티 높은 디테일링이 필요합니다."
+            else:
+                return "The Lucky Star", "데이터상 유효행동과 관계온도가 낮음에도 목표를 달성했습니다. 외부 요인(시장 상황 등)이나 일회성 매출 여부를 점검하세요."
+        else:
+            if hir >= 70 and bcr < 70:
+                return "The Erratic Sprinter", "활동량은 많으나 방문이 불규칙합니다. 사전 계획(PHR)을 철저히 기획하여 균일하게 방문 일정을 안배하세요."
+            elif rtr < 70 and bcr >= 70:
+                return "The Routine Visitor", "규칙적으로 꾸준히 방문하나 고객과의 관계 온도가 낮습니다. 단순 제품 전달을 넘어선 솔루션 제안(PT/니즈환기) 스킬 교육이 시급합니다."
+            elif hir < 70 and bcr < 70:
+                return "The Ghost Hunter", "활동량과 규칙성 모두 저조합니다. 근태 및 일일 활동 계획에 대한 밀착 코칭과 파이프라인 전면 재설계가 필요합니다."
+            else:
+                return "The Hard Worker", "성실하게 양질의 활동을 수행하고 있으나 성과로 이어지지 않고 있습니다. 타겟팅(Segment)이나 주력 품목(MS) 전략의 재점검이 필요합니다."
+
     # 3. JSON 데이터 트리 구축
     hierarchy = {
         'branches': {}, 
@@ -518,7 +585,7 @@ def build_final_reports(external_config=None):
             if rep_analysis is not None:
                 real_shap = {k: float(v) for k, v in rep_analysis['importance'].items()}
             else:
-                real_shap = {'HIR': np.nan, 'RTR': np.nan, 'BCR': np.nan, 'PHR': np.nan}
+                real_shap = {b: np.nan for b in ATOMIC_BEHAVIORS}
             
             prod_matrix = []
             rep_raw = df_raw[(df_raw['지점'] == br) & (df_raw['성명'] == rep)]
@@ -540,15 +607,34 @@ def build_final_reports(external_config=None):
             else:
                 prod_matrix = [{'name': pd_name, 'ms': 0.0, 'growth': 0.0} for pd_name in hierarchy['products']]
             
+            # 4분면 전략 가이드라인: 기준선 계산 및 코칭 액션 트리거
+            ms_values = [p['ms'] for p in prod_matrix if p['ms'] > 0]
+            avg_ms = float(sum(ms_values) / len(ms_values)) if ms_values else 0.0
+            
+            # 코칭 메시지 연산
+            rep_hir = float(df_rep['HIR'].mean())
+            rep_rtr = float(df_rep['RTR'].mean())
+            rep_bcr = float(df_rep['BCR'].mean())
+            rep_ach = calc_achieve(df_rep['처방금액'].sum(), df_rep['목표금액'].sum())
+            c_name, c_action = get_coaching_message(rep_hir, rep_rtr, rep_bcr, rep_ach)
+
+            # Dog(Low MS / Low Growth) 또는 Question Mark(Low MS / High Growth) 파악 
+            # (단순화를 위해 ms가 평균 미만인 주력/비주력 품목 중 의미 있는 볼륨 추적)
+            weak_products = [p['name'] for p in prod_matrix if p['ms'] > 0 and p['ms'] < avg_ms]
+            if weak_products:
+                c_action += f" (🚨 주의: {', '.join(weak_products)} 품목이 Dog/Question Mark 영역에 위치해 있습니다. 품목 전략 재수립이 필요합니다.)"
+
             hierarchy['branches'][br]['members'].append({
                 '성명': rep,
-                'HIR': float(df_rep['HIR'].mean()), 'RTR': float(df_rep['RTR'].mean()),
-                'BCR': float(df_rep['BCR'].mean()), 'PHR': float(df_rep['PHR'].mean()),
+                'HIR': rep_hir, 'RTR': rep_rtr, 'BCR': rep_bcr, 'PHR': float(df_rep['PHR'].mean()),
                 '처방금액': float(df_rep['처방금액'].sum()), '목표금액': float(df_rep['목표금액'].sum()),
                 '지점순위': int(df_br.groupby('성명')['처방금액'].sum().rank(ascending=False)[rep]),
                 'shap': real_shap,
-                'efficiency': float(df_rep['처방금액'].sum() / (df_rep['HIR'].mean() + 1)),
+                'coach_scenario': c_name,
+                'coach_action': c_action,
+                'efficiency': float(df_rep['처방금액'].sum() / (rep_hir + 1)),
                 'gini': float(calc_gini(df_rep['처방금액'])),
+                'avg_ms': avg_ms,
                 'prod_matrix': prod_matrix,
                 'monthly_actual': df_raw[(df_raw['지점']==br) & (df_raw['성명']==rep)].groupby('월')['처방금액'].sum().reindex(month_axis, fill_value=0).tolist(),
                 'monthly_target': target_monthly[(target_monthly['지점']==br) & (target_monthly['성명']==rep)].groupby('월')['목표금액'].sum().reindex(month_axis, fill_value=0).tolist()

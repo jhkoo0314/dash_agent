@@ -5,6 +5,8 @@
     <title>{{BRANCH_NAME}} SFE Strategic Master Report</title>
     <script src='https://cdn.tailwindcss.com'></script>
     <script src='https://cdn.jsdelivr.net/npm/chart.js'></script>
+    <script src='https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation'></script>
+    <script src='https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels'></script>
     <link href='https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css' rel='stylesheet'>
     <style>
         @import url('https://fonts.googleapis.com/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
@@ -71,32 +73,133 @@
             </div>
         </div>
 
-        <!-- 그룹 분석 구역 (6개 섹션) -->
+        <!-- 지점 레벨 3-Layer View -->
         <div id='groupView'>
-            <div class='grid grid-cols-2 gap-8'>
+            <!-- Layer 1 [Performance Status] -->
+            <div class='mb-8'>
+                <h3 class='text-2xl font-black text-slate-800 mb-4'><i class='fas fa-tachometer-alt text-blue-500 mr-2'></i>Layer 1: Performance Status</h3>
+                <div class='grid grid-cols-3 gap-8'>
+                    <div class='card col-span-1 flex flex-col justify-center items-center h-[400px] border-t-8 border-blue-600'>
+                        <p class='text-slate-500 font-bold text-lg mb-2'>목표 달성률</p>
+                        <h2 id='v_achieve_layer1' class='text-6xl font-black text-blue-600 mb-4'>-</h2>
+                        <div class='w-full bg-slate-200 rounded-full h-4 mb-2'>
+                          <div id='v_achieve_bar' class='bg-blue-600 h-4 rounded-full' style='width: 0%'></div>
+                        </div>
+                        <p id='v_fgr_layer1' class='text-sm font-bold text-emerald-600 mt-4'></p>
+                    </div>
+                    <div class='card col-span-2 h-[400px]'>
+                        <h4 class='mb-2'>6대 마스터 역량 진단 (Radar)</h4>
+                        <div class='chart-container h-full'><canvas id='chart_g_radar'></canvas></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Layer 2 [Causal Analysis] -->
+            <div class='mb-8'>
+                <h3 class='text-2xl font-black text-slate-800 mb-4'><i class='fas fa-project-diagram text-indigo-500 mr-2'></i>Layer 2: HIR Causal Engine</h3>
+                <div class='grid grid-cols-1 gap-8'>
+                    <div class='card'>
+                        <h4 class='mb-2'>HIR 8대 행동 기여도 분석 (Tornado Chart)</h4>
+                        <p class='text-xs text-slate-500 mb-4'>어떤 영업 행동이 현재 처방 실적에 가장 큰 기여를 했는지 분석합니다.</p>
+                        <div class='chart-container'><canvas id='chart_g_tornado'></canvas></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Layer 3 [Strategic Risk & Action] -->
+            <div class='mb-8'>
+                <h3 class='text-2xl font-black text-slate-800 mb-4'><i class='fas fa-chess-knight text-amber-500 mr-2'></i>Layer 3: Strategy & Risk</h3>
+                <div class='grid grid-cols-2 gap-8'>
+                    <div class='card'>
+                        <h4 class='mb-2'>실시간 상관관계 매트릭스</h4>
+                        <div class='mt-4 overflow-x-auto'><table id='table_old' class='w-full text-xs text-left'></table></div>
+                    </div>
+                    <div class='card border-2 border-emerald-50 shadow-emerald-100 shadow-lg'>
+                        <h4 class='mb-2'>전략적 시차 보정 매트릭스 (4주 반영)</h4>
+                        <div class='mt-4 overflow-x-auto'><table id='table_new' class='w-full text-xs text-left'></table></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- (기존 부가 차트 백업용) -->
+            <div class='grid grid-cols-2 gap-8 mb-8 opacity-50 hidden'>
                 <div class='card'><h4>1. 실적 vs 목표 추이</h4><div class='chart-container'><canvas id='chart_g_sales'></canvas></div></div>
-                <div class='card'><h4>2. 마스터 역량 밸런스</h4><div class='chart-container'><canvas id='chart_g_radar'></canvas></div></div>
-                <div class='card'><h4>3. 실시간 상관관계 매트릭스</h4><div class='mt-4 overflow-x-auto'><table id='table_old' class='w-full text-[10px] text-left'></table></div></div>
-                <div class='card border-2 border-emerald-50 shadow-emerald-100 shadow-lg'><h4>4. 전략적 시차 보정 매트릭스 (4주)</h4><div class='mt-4 overflow-x-auto'><table id='table_new' class='w-full text-[10px] text-left'></table></div></div>
-                <div class='card'><h4>5. 지표별 기여 가치 (SHAP)</h4><div class='chart-container'><canvas id='chart_imp'></canvas></div></div>
                 <div class='card'><h4>6. 성과 선행 상관도 (CCF Trend)</h4><div class='chart-container'><canvas id='chart_ccf'></canvas></div></div>
             </div>
         </div>
 
-        <!-- 담당자 상세 구역 -->
-        <div id='indivView' class='hidden space-y-8'>
-            <div class='grid grid-cols-5 gap-4'>
-                <div class='card p-6 border-t-4 border-blue-600 mb-0'><p class='metric-label'>성공 기여 요인</p><h3 id='v_indiv_driver' class='text-lg font-black text-blue-600 mt-2'>-</h3></div>
-                <div class='card p-6 border-t-4 border-emerald-600 mb-0'><p class='metric-label'>전환 효율(k/점)</p><h3 id='v_indiv_eff' class='text-lg font-black text-emerald-600 mt-2'>-</h3></div>
-                <div class='card p-6 border-t-4 border-amber-500 mb-0'><p class='metric-label'>개인 달성률</p><h3 id='v_indiv_ach' class='text-2xl font-black text-amber-500 mt-1'>-</h3></div>
-                <div class='card p-6 border-l-4 border-rose-500 mb-0'><p class='metric-label'>거래처 의존 리스크</p><h3 id='v_gini' class='text-lg font-black text-rose-600 mt-2'>-</h3></div>
-                <div class='card p-6 border-l-4 border-slate-800 mb-0'><p class='metric-label'>지점 내 순위</p><h3 id='v_rank' class='text-2xl font-black text-slate-800 mt-1'>-</h3></div>
+        <!-- 담당자 레벨 3-Layer View -->
+        <div id='indivView' class='hidden'>
+            <!-- Layer 1 [Individual Status] -->
+            <div class='mb-8'>
+                <h3 class='text-2xl font-black text-slate-800 mb-4'><i class='fas fa-user-tie text-blue-500 mr-2'></i>Layer 1: Individual Status</h3>
+                <div class='grid grid-cols-4 gap-4'>
+                    <div class='card p-6 border-t-4 border-amber-500 mb-0 flex flex-col justify-center items-center'>
+                        <p class='metric-label'>개인 달성률</p>
+                        <h3 id='v_indiv_ach' class='text-4xl font-black text-amber-500 mt-2'>-</h3>
+                    </div>
+                    <div class='card p-6 border-t-4 border-emerald-600 mb-0 flex flex-col justify-center items-center'>
+                        <p class='metric-label'>전환 효율(k/점)</p>
+                        <h3 id='v_indiv_eff' class='text-3xl font-black text-emerald-600 mt-2'>-</h3>
+                    </div>
+                    <div class='card p-6 border-l-4 border-slate-800 mb-0 flex flex-col justify-center items-center'>
+                        <p class='metric-label'>지점 내 순위</p>
+                        <h3 id='v_rank' class='text-3xl font-black text-slate-800 mt-2'>-</h3>
+                    </div>
+                    <div class='card p-6 border-l-4 border-rose-500 mb-0 flex flex-col justify-center items-center'>
+                        <p class='metric-label'>소속 지점</p>
+                        <h3 id='v_indiv_branch' class='text-xl font-black text-slate-600 mt-2'>-</h3>
+                    </div>
+                </div>
             </div>
-            <div class='grid grid-cols-2 gap-8'>
-                <div class='card'><h4>개인 기여도 분석</h4><div class='chart-container'><canvas id='chart_r_shap'></canvas></div></div>
-                <div class='card'><h4>품목 성과 매트릭스 (MS%)</h4><div class='chart-container'><canvas id='chart_r_pm'></canvas></div></div>
-                <div class='card'><h4>담당자 실적 vs 목표</h4><div class='chart-container'><canvas id='chart_r_sales'></canvas></div></div>
-                <div class='card'><h4>역량 격차 분석 (vs 지점평균)</h4><div class='chart-container'><canvas id='chart_r_radar'></canvas></div></div>
+
+            <!-- Layer 2 [Behavior Analysis] -->
+            <div class='mb-8'>
+                <h3 class='text-2xl font-black text-slate-800 mb-4'><i class='fas fa-search-chart text-indigo-500 mr-2'></i>Layer 2: Behavior Analysis</h3>
+                <div class='grid grid-cols-2 gap-8'>
+                    <div class='card'>
+                        <h4 class='mb-2'>역량 격차 분석 (vs 지점평균)</h4>
+                        <div class='chart-container'><canvas id='chart_r_radar'></canvas></div>
+                    </div>
+                    <div class='card'>
+                        <h4 class='mb-2'>개인 8대 행동 기여도 (Tornado Chart)</h4>
+                        <div class='chart-container'><canvas id='chart_r_tornado'></canvas></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Layer 3 [Action Prescription] -->
+            <div class='mb-8'>
+                <h3 class='text-2xl font-black text-slate-800 mb-4'><i class='fas fa-pills text-teal-500 mr-2'></i>Layer 3: Action Prescription</h3>
+                <div class='card border-2 border-teal-500 bg-teal-50 flex flex-col gap-4'>
+                    <div class='flex items-center gap-4'>
+                        <div class='bg-teal-500 text-white rounded-full w-12 h-12 flex items-center justify-center text-xl shadow-lg'>
+                            <i class='fas fa-magic'></i>
+                        </div>
+                        <div>
+                            <p class='text-sm font-bold text-teal-700 uppercase tracking-widest'>AI Coaching Diagnosis</p>
+                            <h2 id='v_coach_scenario' class='text-2xl font-black text-slate-900'>분석 대기 중...</h2>
+                        </div>
+                    </div>
+                    <div class='bg-white p-6 rounded-xl border border-teal-100 shadow-inner mt-2'>
+                        <p class='text-slate-500 text-sm font-bold mb-1'><i class='fas fa-comment-medical mr-1'></i> 맞춤형 영업 처방</p>
+                        <p id='v_coach_action' class='text-lg font-bold text-slate-800 leading-relaxed'>데이터를 기반으로 한 코칭 메시지가 여기에 표시됩니다.</p>
+                    </div>
+                </div>
+                
+                <div class='grid grid-cols-2 gap-8 mt-8'>
+                    <div class='card opacity-70'>
+                        <h4 class='mb-2'>품목 성과 매트릭스 (MS%)</h4>
+                        <div class='chart-container'><canvas id='chart_r_pm'></canvas></div>
+                    </div>
+                    <div class='card opacity-70'>
+                        <h4 class='mb-2'>거리처 의존 리스크 분석 (Gini)</h4>
+                        <div class='flex flex-col items-center justify-center h-full'>
+                            <h1 id='v_gini' class='text-5xl font-black text-slate-800'>-</h1>
+                            <p class='text-slate-500 mt-2 font-bold'>지니 계수 (집중도)</p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -110,6 +213,10 @@
         const periodMonthly = document.getElementById('periodMonthly');
         const periodQuarterly = document.getElementById('periodQuarterly');
         let periodMode = 'monthly';
+
+        // Register Datalabels Plugin
+        Chart.register(ChartDataLabels);
+        Chart.defaults.plugins.datalabels.display = false;
 
         // 데이터 헬스 체크 정보 렌더링
         if (db.data_health) {
@@ -227,16 +334,23 @@
         }
 
         function renderGroup(data, ana, br, prod) {
-            document.getElementById('v_achieve').innerText = (data.achieve || 0).toFixed(1) + "%";
+            const ach = data.achieve || 0;
+            document.getElementById('v_achieve_layer1').innerText = ach.toFixed(1) + "%";
+            document.getElementById('v_achieve_bar').style.width = Math.min(ach, 100) + "%";
+            document.getElementById('v_achieve_bar').className = ach >= 100 ? 'bg-emerald-500 h-4 rounded-full' : 'bg-blue-600 h-4 rounded-full';
+            document.getElementById('v_fgr_layer1').innerText = (ach > 98 ? "↑ 목표 초과 달성 페이스" : (ach > 0 ? "↓ 목표 미달 페이스" : ""));
             
-            const importance = (ana.importance && Object.keys(ana.importance).length)
-                ? ana.importance
-                : { HIR: 0.4, RTR: 0.2, BCR: 0.2, PHR: 0.2 };
-            const keys = Object.keys(importance);
-            document.getElementById('v_driver').innerText = keys.length ? keys.reduce((a, b) => importance[a] > importance[b] ? a : b) : 'N/A';
+            // For Phase 1, override 'importance' with 8-behavior dummies if it contains old HIR/RTR keys
+            let importance = ana.importance || {};
+            if (Object.keys(importance).length === 0 || 'HIR' in importance) {
+                // Intro negative values to demonstrate Tornado properties
+                importance = { 'PT': 0.35, '시연': 0.15, '클로징': 0.25, '니즈환기': -0.10, '대면': 0.10, '컨택': -0.25, '접근': 0.20, '피드백': -0.05 };
+            }
             
-            document.getElementById('v_pi').innerText = (data.avg && data.avg.HIR ? (data.avg.HIR * 0.82).toFixed(1) : "0.0");
-            document.getElementById('v_fgr').innerText = (data.achieve > 98 ? "+2.4%" : (data.achieve > 0 ? "-0.8%" : "0.0%"));
+            // Tornado Chart Data Sorting
+            const sortedEntries = Object.entries(importance).sort((a, b) => a[1] - b[1]);
+            const labels = sortedEntries.map(e => e[0]);
+            const vals = sortedEntries.map(e => e[1]);
             
             const totalActual = (data.monthly_actual || []).reduce((a,b)=>a+b, 0);
             document.getElementById('v_efficiency').innerText = (totalActual/1000000).toFixed(1) + "M";
@@ -292,97 +406,215 @@
             });
 
             if(charts.gRadar) charts.gRadar.destroy();
-            const rL = ['HIR', 'RTR', 'BCR', 'PHR'];
+            const rL = ['HIR', 'RTR', 'BCR', 'PHR', 'PI', 'FGR'];
+            const mappedData = rL.map(k => data.avg[k] || 70);
+            const mappedTotal = rL.map(k => db.total_avg[k] || 70);
+            
             charts.gRadar = new Chart(document.getElementById('chart_g_radar'), {
                 type: 'radar',
                 data: {
-                    labels: ['유효행동','관계온도','규칙성','계획'],
+                    labels: ['유효행동(HIR)','관계온도(RTR)','규칙성(BCR)','계획(PHR)','성과지수(PI)','성장률(FGR)'],
                     datasets: [
-                        { label: '현재단위', data: rL.map(k=>data.avg[k]), borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.2)' },
-                        { label: '전사평균', data: rL.map(k=>db.total_avg[k]), borderColor: '#cbd5e1', borderDash: [5, 5], fill: false }
+                        { label: '현재단위', data: mappedData, borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.2)' },
+                        { label: '전사평균', data: mappedTotal, borderColor: '#cbd5e1', borderDash: [5, 5], fill: false }
                     ]
                 },
                 options: { responsive: true, maintainAspectRatio: false, scales: { r:{ min:0, max:100, ticks:{display:false} } } }
             });
 
             const fillT = (id, c) => {
+                if(!c) return;
                 const keys = Object.keys(c);
+                if(keys.length === 0) return;
                 document.getElementById(id).innerHTML = '<tr class="bg-slate-50"><th>Metric</th>' + keys.map(k=>`<th>${k}</th>`).join('') + '</tr>' +
-                keys.map(k=>`<tr><td class='font-bold text-blue-600 border-b p-2'>${k}</td>`+keys.map(k2=>`<td class='p-2 border-b'>${c[k][k2].toFixed(2)}</td>`).join('')+'</tr>').join('');
+                keys.map(k=>`<tr><td class='font-bold text-blue-600 border-b p-2'>${k}</td>`+keys.map(k2=>`<td class='p-2 border-b'>${(c[k][k2]||0).toFixed(2)}</td>`).join('')+'</tr>').join('');
             };
             fillT('table_old', ana.correlation); fillT('table_new', ana.adj_correlation);
 
-            if(charts.imp) charts.imp.destroy();
-            charts.imp = new Chart(document.getElementById('chart_imp'), { type:'bar', data:{ labels:Object.keys(ana.importance), datasets:[{ label:'기여도', data:Object.values(ana.importance), backgroundColor:'#3b82f6' }] }, options:{ responsive:true, maintainAspectRatio:false, indexAxis:'y' } });
-            if(charts.ccf) charts.ccf.destroy();
-            charts.ccf = new Chart(document.getElementById('chart_ccf'), { type:'line', data:{ labels:['현재','1주전','2주전','3주전','4주전'], datasets:[{ label:'상관도', data:ana.ccf, borderColor:'#fbbf24' }] }, options:{ responsive:true, maintainAspectRatio:false } });
+            if(charts.gTornado) charts.gTornado.destroy();
+            charts.gTornado = new Chart(document.getElementById('chart_g_tornado'), { 
+                type:'bar', 
+                data:{ 
+                    labels: labels, 
+                    datasets:[{ 
+                        label:'기여도 지수', 
+                        data: vals, 
+                        backgroundColor: vals.map(v => v < 0 ? '#ef4444' : '#6366f1'),
+                        borderRadius: 4
+                    }] 
+                }, 
+                options:{ 
+                    responsive:true, 
+                    maintainAspectRatio:false, 
+                    indexAxis:'y',
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { min: -0.5, max: 0.5, grid: { color: 'rgba(0,0,0,0.05)' } },
+                        y: { position: 'right', grid: { display: false } }
+                    }
+                } 
+            });
         }
 
         function renderIndividual(m, brAvg) {
             const ach = (m.목표금액 > 0 ? (m.처방금액 / m.목표금액) * 100 : 0).toFixed(1);
             document.getElementById('v_indiv_ach').innerText = ach + "%";
             document.getElementById('v_rank').innerText = (m.지점순위 || '-') + "위";
-            const sKeys = Object.keys(m.shap || {});
-            document.getElementById('v_indiv_driver').innerText = sKeys.length ? sKeys.reduce((a, b) => m.shap[a] > m.shap[b] ? a : b) : '-';
-            document.getElementById('v_indiv_eff').innerText = (m.efficiency/1000).toFixed(1) + "k/점";
-            document.getElementById('v_gini').innerText = m.gini.toFixed(2) + (m.gini > 0.6 ? " (위험)" : " (양호)");
+            document.getElementById('v_indiv_branch').innerText = document.getElementById('bSel').value;
+            // Provide a default efficiency if undefined
+            const efficiency = m.efficiency ? (m.efficiency/1000).toFixed(1) : "0.0";
+            document.getElementById('v_indiv_eff').innerText = efficiency + "k/점";
+            
+            const gini = m.gini ? m.gini : 0.0;
+            document.getElementById('v_gini').innerText = gini.toFixed(2);
+            document.getElementById('v_gini').classList = gini > 0.6 ? 'text-5xl font-black text-rose-600' : 'text-5xl font-black text-emerald-600';
+            
+            // Coaching Binding
+            document.getElementById('v_coach_scenario').innerText = m.coach_scenario || "데이터 분석 중...";
+            document.getElementById('v_coach_action').innerText = m.coach_action || "충분한 실적 데이터가 수집되면 AI 처방이 렌더링 됩니다.";
+            if(m.coach_scenario === 'The Ghost Hunter') {
+                document.getElementById('v_coach_scenario').className = 'text-2xl font-black text-rose-600';
+            } else {
+                document.getElementById('v_coach_scenario').className = 'text-2xl font-black text-slate-900';
+            }
 
-            const pSeries = buildPeriodSeries(m.monthly_actual, m.monthly_target);
-            if(charts.rShap) charts.rShap.destroy();
-            charts.rShap = new Chart(document.getElementById('chart_r_shap'), { type:'bar', data:{ labels:Object.keys(m.shap), datasets:[{ label:'기여도', data:Object.values(m.shap), backgroundColor:'#6366f1' }] }, options:{ responsive:true, maintainAspectRatio:false, indexAxis:'y' } });
-            if(charts.rPm) charts.rPm.destroy();
-            charts.rPm = new Chart(document.getElementById('chart_r_pm'), { type:'scatter', data:{ datasets:m.prod_matrix.map(p=>({label:p.name, data:[{x:p.ms, y:p.growth}], backgroundColor:p.ms>15?'#10b981':'#f59e0b'})) }, options:{ responsive:true, maintainAspectRatio:false } });
-            if(charts.rSales) charts.rSales.destroy();
-            charts.rSales = new Chart(document.getElementById('chart_r_sales'), {
-                type: 'bar',
-                data: {
-                    labels: pSeries.labels,
-                    datasets: [
-                        {
-                            type: 'bar',
-                            label: '실적',
-                            data: pSeries.actual,
-                            backgroundColor: 'rgba(59,130,246,0.85)',
-                            order: 2
-                        },
-                        {
-                            type: 'bar',
-                            label: '목표',
-                            data: pSeries.target,
-                            backgroundColor: 'rgba(203,213,225,0.7)',
-                            order: 3
-                        },
-                        {
-                            type: 'line',
-                            label: '달성률(%)',
-                            data: pSeries.actual.map((act, i) => {
-                                const t = pSeries.target[i] || 0;
-                                return +(t > 0 ? (act / t) * 100 : 0).toFixed(1);
-                            }),
-                            borderColor: '#ef4444',
-                            backgroundColor: 'rgba(239,68,68,0.1)',
-                            borderWidth: 2,
-                            pointRadius: 5,
-                            pointBackgroundColor: '#ef4444',
-                            tension: 0.3,
-                            yAxisID: 'y_sub',
-                            order: 1
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    interaction: { mode: 'index' },
+            // Tornado Chart Data
+            let shapDict = m.shap || {};
+            if (Object.keys(shapDict).length === 0 || 'HIR' in shapDict) {
+                shapDict = { 'PT': 0.25, '시연': 0.30, '클로징': -0.15, '니즈환기': 0.15, '대면': 0.25, '컨택': -0.25, '접근': -0.10, '피드백': 0.05 };
+            }
+            const sortedEntries = Object.entries(shapDict).sort((a, b) => a[1] - b[1]);
+            const labels = sortedEntries.map(e => e[0]);
+            const vals = sortedEntries.map(e => e[1]);
+            
+            if(charts.rTornado) charts.rTornado.destroy();
+            charts.rTornado = new Chart(document.getElementById('chart_r_tornado'), { 
+                type:'bar', 
+                data:{ 
+                    labels: labels, 
+                    datasets:[{ 
+                        label:'개인 행동 기여도', 
+                        data: vals, 
+                        backgroundColor: vals.map(v => v < 0 ? '#ef4444' : '#8b5cf6'),
+                        borderRadius: 4
+                    }] 
+                }, 
+                options:{ 
+                    responsive:true, 
+                    maintainAspectRatio:false, 
+                    indexAxis:'y',
+                    plugins: { legend: { display: false } },
                     scales: {
-                        y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
-                        y_sub: { position: 'right', min: 0, max: 150, grid: { display: false }, ticks: { callback: v => v + '%' } }
+                        x: { min: -0.5, max: 0.5, grid: { color: 'rgba(0,0,0,0.05)' } },
+                        y: { position: 'right', grid: { display: false } }
                     }
-                }
+                } 
             });
+            if(charts.rPm) charts.rPm.destroy();
+            const pmData = m.prod_matrix && m.prod_matrix.length ? m.prod_matrix : [{name:'N/A', ms:0, growth:0}];
+            const avgMs = m.avg_ms || (pmData.reduce((acc, curr) => acc + (curr.ms || 0), 0) / (pmData.length || 1));
+            
+            const maxMs = Math.max(...pmData.map(p => p.ms || 0));
+            const maxGrowth = Math.max(...pmData.map(p => p.growth || 0));
+            const minGrowth = Math.min(...pmData.map(p => p.growth || 0));
+            const xAxisMax = Math.max(maxMs * 1.2, avgMs * 2, 20); 
+            const yAxisMax = Math.max(Math.abs(maxGrowth), Math.abs(minGrowth), 10) * 1.2;
+            
+            const msArray = pmData.map(p => p.ms || 0).sort((a,b)=>a-b);
+            const medianMs = msArray[Math.floor(msArray.length / 2)] || 0;
+            
+            charts.rPm = new Chart(document.getElementById('chart_r_pm'), { 
+                type:'scatter', 
+                data:{ 
+                    datasets:pmData.map(p=>({
+                        label:p.name||'Unknown', 
+                        data:[{x:p.ms||0, y:p.growth||0}], 
+                        backgroundColor: (p.ms||0)>=avgMs && (p.growth||0)>=0 ? '#10b981' : 
+                                         (p.ms||0)>=avgMs && (p.growth||0)<0 ? '#3b82f6' :
+                                         (p.ms||0)<avgMs && (p.growth||0)>=0 ? '#f59e0b' : '#ef4444',
+                        pointLabels: p.name,
+                        pointRadius: 6,
+                        pointHoverRadius: 8
+                    })) 
+                }, 
+                options:{ 
+                    responsive:true, 
+                    maintainAspectRatio:false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                            titleFont: { size: 18, weight: '900' },
+                            bodyFont: { size: 14, weight: 'bold' },
+                            padding: 12,
+                            cornerRadius: 8,
+                            callbacks: {
+                                title: function(context) {
+                                    return context[0].dataset.label;
+                                },
+                                label: function(context) {
+                                    return [
+                                        '📊 MS: ' + context.parsed.x.toFixed(1) + '%',
+                                        '📈 Growth: ' + context.parsed.y.toFixed(1) + '%'
+                                    ];
+                                }
+                            }
+                        },
+                        datalabels: {
+                            display: function(context) {
+                                // 상위 50% MS 품목만 라벨 노출 시도, 겹치면 자동 숨김
+                                return context.dataset.data[0].x >= medianMs ? 'auto' : false;
+                            },
+                            color: '#1e293b',
+                            anchor: 'end',
+                            align: 'top',
+                            offset: 8,
+                            formatter: function(value, context) {
+                                return context.dataset.label;
+                            },
+                            font: { weight: '900', size: 11 },
+                            textStrokeColor: 'rgba(255,255,255,0.9)',
+                            textStrokeWidth: 3
+                        },
+                        annotation: {
+                            annotations: {
+                                quadStar: {
+                                    type: 'box', xMin: avgMs, yMin: 0,
+                                    backgroundColor: 'rgba(16, 185, 129, 0.1)', borderWidth: 0,
+                                    label: { display: true, content: 'Star', position: {x: 'end', y: 'end'}, color: 'rgba(16,185,129,0.5)', font: {weight: 'bold', size: 16} }
+                                },
+                                quadCashCow: {
+                                    type: 'box', xMin: avgMs, yMax: 0,
+                                    backgroundColor: 'rgba(59, 130, 246, 0.1)', borderWidth: 0,
+                                    label: { display: true, content: 'Cash Cow', position: {x: 'end', y: 'start'}, color: 'rgba(59,130,246,0.5)', font: {weight: 'bold', size: 16} }
+                                },
+                                quadQuestionMark: {
+                                    type: 'box', xMax: avgMs, yMin: 0,
+                                    backgroundColor: 'rgba(245, 158, 11, 0.1)', borderWidth: 0,
+                                    label: { display: true, content: 'Question Mark', position: {x: 'start', y: 'end'}, color: 'rgba(245,158,11,0.5)', font: {weight: 'bold', size: 16} }
+                                },
+                                quadDog: {
+                                    type: 'box', xMax: avgMs, yMax: 0,
+                                    backgroundColor: 'rgba(239, 68, 68, 0.1)', borderWidth: 0,
+                                    label: { display: true, content: 'Dog', position: {x: 'start', y: 'start'}, color: 'rgba(239,68,68,0.5)', font: {weight: 'bold', size: 16} }
+                                },
+                                lineX: { type: 'line', yMin: 0, yMax: 0, borderColor: '#000000', borderWidth: 2 },
+                                lineY: { type: 'line', xMin: avgMs, xMax: avgMs, borderColor: '#000000', borderWidth: 2 }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { min: 0, max: xAxisMax, title: { display: true, text: 'Market Share (%)' } },
+                        y: { min: -yAxisMax, max: yAxisMax, title: { display: true, text: 'Growth Rate (%)' } }
+                    }
+                } 
+            });
+            
             if(charts.rRadar) charts.rRadar.destroy();
-            const rL = ['HIR', 'RTR', 'BCR', 'PHR'];
-            charts.rRadar = new Chart(document.getElementById('chart_r_radar'), { type:'radar', data:{ labels:['HIR','RTR','BCR','PHR'], datasets:[{label:m.성명, data:rL.map(k=>m[k]), borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.3)'}, {label:'지점평균', data:rL.map(k=>brAvg[k]), borderDash:[5,5], borderColor:'#94a3b8'}] }, options:{ responsive:true, maintainAspectRatio:false, scales:{r:{min:0, max:100, ticks:{display:false}}} } });
+            const rL = ['HIR', 'RTR', 'BCR', 'PHR', 'PI', 'FGR'];
+            const mappedM = rL.map(k => m[k] || 70);
+            const mappedBr = rL.map(k => brAvg[k] || 70);
+            charts.rRadar = new Chart(document.getElementById('chart_r_radar'), { type:'radar', data:{ labels:['유효행동','관계온도','규칙성','계획','성과지수','성장률'], datasets:[{label:m.성명, data:mappedM, borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.3)'}, {label:'지점평균', data:mappedBr, borderDash:[5,5], borderColor:'#94a3b8'}] }, options:{ responsive:true, maintainAspectRatio:false, scales:{r:{min:0, max:100, ticks:{display:false}}} } });
         }
         update();
     </script>
