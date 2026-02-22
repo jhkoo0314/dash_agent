@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang='ko'>
 <head>
     <meta charset='UTF-8'>
@@ -28,15 +28,40 @@
                 <h1 class='text-4xl font-black text-slate-900 tracking-tighter'>SFE STRATEGIC <span class='text-blue-600'>INTEL V13</span></h1>
                 <p id='viewTitle' class='text-slate-500 font-bold text-xs mt-1 uppercase tracking-[0.2em]'>{{BRANCH_NAME}} 마스터 통합 리포트</p>
             </div>
-            <div class='flex gap-3'>
-                <select id='bSel' class='{{BRANCH_FILTER_CLASS}}'><option value='TOTAL'>전체 지점</option></select>
-                <select id='pSel'><option value='ALL'>모든 품목</option></select>
-                <select id='rSel'><option value='NONE'>담당자 상세 선택</option></select>
+            <div class='flex flex-col items-end gap-2'>
+                <p id='dataRefDate' class='text-blue-500 font-black text-sm uppercase tracking-widest'>Data as of: -</p>
+                <div class='flex gap-3'>
+                    <select id='bSel' class='{{BRANCH_FILTER_CLASS}}'><option value='TOTAL'>전체 지점</option></select>
+                    <select id='pSel'><option value='ALL'>모든 품목</option></select>
+                    <select id='rSel'><option value='NONE'>담당자 상세 선택</option></select>
+                </div>
             </div>
         </header>
-        <div class='flex gap-2 mb-6'>
+        <div class='flex gap-2 mb-6 items-center'>
             <button id='periodMonthly' class='px-3 py-1 rounded-lg text-xs font-black bg-blue-600 text-white'>월별</button>
             <button id='periodQuarterly' class='px-3 py-1 rounded-lg text-xs font-black bg-slate-200 text-slate-700'>분기별</button>
+            <select id='monthSel'>
+                <option value='AUTO'>자동 (최신 월)</option>
+                <option value='0'>1월</option>
+                <option value='1'>2월</option>
+                <option value='2'>3월</option>
+                <option value='3'>4월</option>
+                <option value='4'>5월</option>
+                <option value='5'>6월</option>
+                <option value='6'>7월</option>
+                <option value='7'>8월</option>
+                <option value='8'>9월</option>
+                <option value='9'>10월</option>
+                <option value='10'>11월</option>
+                <option value='11'>12월</option>
+            </select>
+            <select id='quarterSel' class='hidden'>
+                <option value='AUTO'>자동 (최신 분기)</option>
+                <option value='0'>1분기</option>
+                <option value='1'>2분기</option>
+                <option value='2'>3분기</option>
+                <option value='3'>4분기</option>
+            </select>
         </div>
 
         <!-- 6개 핵심 지표 카드 -->
@@ -46,25 +71,25 @@
             <div id='card_metric_3' class='card p-5 border-t-4 border-amber-500 mb-0 transition-colors'><p id='l_metric_3' class='metric-label'>성과지수(PI)</p><h3 id='v_metric_3' class='metric-value text-amber-500'>-</h3></div>
             <div id='card_metric_4' class='card p-5 border-t-4 border-emerald-500 mb-0 transition-colors'><p id='l_metric_4' class='metric-label'>성장지수(FGR)</p><h3 id='v_metric_4' class='metric-value text-emerald-600'>-</h3></div>
             <div id='card_metric_5' class='card p-5 border-t-4 border-slate-400 mb-0 transition-colors'><p id='l_metric_5' class='metric-label'>영업 효율성</p><h3 id='v_metric_5' class='text-xl font-black text-slate-700 mt-2'>-</h3></div>
-            <div id='card_metric_6' class='card p-5 border-t-4 border-slate-400 mb-0 transition-colors'><p id='l_metric_6' class='metric-label'>데이터 정밀도</p><h3 id='v_metric_6' class='text-xl font-black text-slate-500 mt-2'>Extreme</h3></div>
+            <div id='card_metric_6' class='card p-5 border-t-4 border-slate-400 mb-0 transition-colors'><p id='l_metric_6' class='metric-label'>데이터 정합성</p><h3 id='v_metric_6' class='text-xl font-black text-slate-500 mt-2'>점검중</h3></div>
         </div>
 
-        <!-- 데이터 정밀도 경고 섹션 (레코드 누락) -->
+        <!-- 데이터 정합성 경고 섹션 (레코드 누락) -->
         <div id='qualityAlert' class='hidden card border-l-8 border-rose-500 bg-rose-50'>
             <div class='flex items-center gap-3 mb-3'>
                 <i class='fas fa-exclamation-triangle text-rose-600 text-2xl'></i>
-                <h4 class='text-rose-900 font-black text-xl'>데이터 정밀도 경고: 목표값 누락 탐지</h4>
+                <h4 class='text-rose-900 font-black text-xl'>데이터 정합성 경고: 목표값 누락</h4>
             </div>
-            <p class='text-rose-700 text-sm mb-4'>아래 항목들은 <b>실적은 집계되었으나 설정된 목표값이 없어</b> 달성률이 0%로 표시되거나 분석에서 제외되었습니다.</p>
+            <p class='text-rose-700 text-sm mb-4'>아래 항목은 <b>실적은 집계되었지만 설정된 목표값이 없어</b> 달성률이 0%로 표시되거나 분석에서 제외될 수 있습니다.</p>
             <div class='grid grid-cols-4 gap-2' id='missingList'></div>
         </div>
 
-        <!-- 데이터 헬스 가이드 (필드 매핑 안내) -->
+        <!-- 데이터 소스 가이드 (필드 매핑 안내) -->
         <div id='healthSection' class='hidden card border-l-8 border-blue-400 bg-blue-50/30'>
             <div class='flex justify-between items-center mb-4'>
                 <div class='flex items-center gap-3'>
                     <i class='fas fa-microchip text-blue-500 text-2xl'></i>
-                    <h4 class='text-slate-800 font-black text-xl'>시스템 데이터 매핑 헬스 체크</h4>
+                    <h4 class='text-slate-800 font-black text-xl'>시스템 데이터 매핑 상태 체크</h4>
                 </div>
                 <div id='healthScore' class='px-4 py-1 rounded-full bg-blue-500 text-white font-black text-sm'>Score: 100</div>
             </div>
@@ -73,7 +98,7 @@
             </div>
         </div>
 
-        <!-- 지점 레벨 3-Layer View -->
+        <!-- 지점 뷰 3-Layer View -->
         <div id='groupView'>
             <!-- Layer 1 [Performance Status] -->
             <div class='mb-8'>
@@ -88,7 +113,7 @@
                         <p id='v_fgr_layer1' class='text-sm font-bold text-emerald-600 mt-4'></p>
                     </div>
                     <div class='card col-span-2 h-[400px]'>
-                        <h4 class='mb-2'>6대 마스터 역량 진단 (Radar)</h4>
+                        <h4 class='mb-2'>6대 핵심 지표 진단 (Radar)</h4>
                         <div class='chart-container h-full'><canvas id='chart_g_radar'></canvas></div>
                     </div>
                 </div>
@@ -100,7 +125,7 @@
                 <div class='grid grid-cols-1 gap-8'>
                     <div class='card'>
                         <h4 class='mb-2'>HIR 8대 행동 기여도 분석 (Tornado Chart)</h4>
-                        <p class='text-xs text-slate-500 mb-4'>어떤 영업 행동이 현재 처방 실적에 가장 큰 기여를 했는지 분석합니다.</p>
+                        <p class='text-xs text-slate-500 mb-4'>어떤 영업 행동이 현재 처방 실적에 더 크게 기여하는지 분석합니다.</p>
                         <div class='chart-container'><canvas id='chart_g_tornado'></canvas></div>
                     </div>
                 </div>
@@ -121,14 +146,14 @@
                 </div>
             </div>
             
-            <!-- (기존 부가 차트 백업용) -->
+            <!-- (기존 부가 차트 백업) -->
             <div class='grid grid-cols-2 gap-8 mb-8 opacity-50 hidden'>
                 <div class='card'><h4>1. 실적 vs 목표 추이</h4><div class='chart-container'><canvas id='chart_g_sales'></canvas></div></div>
-                <div class='card'><h4>6. 성과 선행 상관도 (CCF Trend)</h4><div class='chart-container'><canvas id='chart_ccf'></canvas></div></div>
+                <div class='card'><h4>6. 성과 선행 상관 추이 (CCF Trend)</h4><div class='chart-container'><canvas id='chart_ccf'></canvas></div></div>
             </div>
         </div>
 
-        <!-- 담당자 레벨 3-Layer View -->
+        <!-- 담당자 뷰 3-Layer View -->
         <div id='indivView' class='hidden'>
             <!-- Layer 1 [Individual Status] -->
             <div class='mb-8'>
@@ -139,7 +164,7 @@
                         <h3 id='v_indiv_ach' class='text-4xl font-black text-amber-500 mt-2'>-</h3>
                     </div>
                     <div class='card p-6 border-t-4 border-emerald-600 mb-0 flex flex-col justify-center items-center'>
-                        <p class='metric-label'>전환 효율(k/점)</p>
+                        <p class='metric-label'>환산 효율(k/기간)</p>
                         <h3 id='v_indiv_eff' class='text-3xl font-black text-emerald-600 mt-2'>-</h3>
                     </div>
                     <div class='card p-6 border-l-4 border-slate-800 mb-0 flex flex-col justify-center items-center'>
@@ -158,7 +183,7 @@
                 <h3 class='text-2xl font-black text-slate-800 mb-4'><i class='fas fa-search-chart text-indigo-500 mr-2'></i>Layer 2: Behavior Analysis</h3>
                 <div class='grid grid-cols-2 gap-8'>
                     <div class='card'>
-                        <h4 class='mb-2'>역량 격차 분석 (vs 지점평균)</h4>
+                        <h4 class='mb-2'>지표 격차 분석 (vs 지점평균)</h4>
                         <div class='chart-container'><canvas id='chart_r_radar'></canvas></div>
                     </div>
                     <div class='card'>
@@ -183,7 +208,7 @@
                     </div>
                     <div class='bg-white p-6 rounded-xl border border-teal-100 shadow-inner mt-2'>
                         <p class='text-slate-500 text-sm font-bold mb-1'><i class='fas fa-comment-medical mr-1'></i> 맞춤형 영업 처방</p>
-                        <p id='v_coach_action' class='text-lg font-bold text-slate-800 leading-relaxed'>데이터를 기반으로 한 코칭 메시지가 여기에 표시됩니다.</p>
+                        <p id='v_coach_action' class='text-lg font-bold text-slate-800 leading-relaxed'>데이터 기반 AI 코칭 메시지가 여기에 표시됩니다.</p>
                     </div>
                 </div>
                 
@@ -193,7 +218,7 @@
                         <div class='chart-container'><canvas id='chart_r_pm'></canvas></div>
                     </div>
                     <div class='card opacity-70'>
-                        <h4 class='mb-2'>거리처 의존 리스크 분석 (Gini)</h4>
+                        <h4 class='mb-2'>거래처 편중 리스크 분석 (Gini)</h4>
                         <div class='flex flex-col items-center justify-center h-full'>
                             <h1 id='v_gini' class='text-5xl font-black text-slate-800'>-</h1>
                             <p class='text-slate-500 mt-2 font-bold'>지니 계수 (집중도)</p>
@@ -212,16 +237,16 @@
         const rSel = document.getElementById('rSel');
         const periodMonthly = document.getElementById('periodMonthly');
         const periodQuarterly = document.getElementById('periodQuarterly');
+        const monthSel = document.getElementById('monthSel');
+        const quarterSel = document.getElementById('quarterSel');
         let periodMode = 'monthly';
 
         // Register Datalabels Plugin
         Chart.register(ChartDataLabels);
         Chart.defaults.plugins.datalabels.display = false;
-
-        // 데이터 헬스 체크 정보 렌더링
         if (db.data_health) {
             const hScore = document.getElementById('healthScore');
-            hScore.innerText = `Health: ${db.data_health.integrity_score}%`;
+            hScore.innerText = `정합성: ${db.data_health.integrity_score}%`;
             if(db.data_health.integrity_score < 80) hScore.className = hScore.className.replace('bg-blue-500', 'bg-amber-500');
             
             const mappingList = document.getElementById('mappingStatus');
@@ -235,21 +260,24 @@
                 div.innerHTML = `
                     <p class='text-[10px] font-bold text-slate-400 uppercase'>${field}</p>
                     <p class='text-xs font-black ${source ? 'text-slate-700' : 'text-rose-600'}'>
-                        ${source ? `<i class='fas fa-link mr-1 text-blue-400'></i> ${source}` : `<i class='fas fa-times mr-1'></i> Missing`}
+                        ${source ? `<i class='fas fa-link mr-1 text-blue-400'></i> ${source}` : `<i class='fas fa-times mr-1'></i> 누락`}
                     </p>
                 `;
                 mappingList.appendChild(div);
             });
         }
 
-        // 누락 데이터 초기 리포팅 (레코드 단위)
+        // 누락 데이터 초기 리포트(레코드 단위)
         if (db.missing_data && db.missing_data.length > 0) {
             document.getElementById('qualityAlert').classList.remove('hidden');
             const list = document.getElementById('missingList');
             db.missing_data.slice(0, 12).forEach(item => {
                 const div = document.createElement('div');
                 div.className = 'bg-white p-2 rounded border border-rose-200 text-[10px] text-rose-800 font-bold';
-                div.innerHTML = `<i class='fas fa-map-marker-alt mr-1'></i> ${item.지점} | ${item.성명} | ${item.품목}`;
+                const missBranch = item['지점'] ?? item.branch ?? '-';
+                const missRep = item['성명'] ?? item.rep ?? '-';
+                const missProd = item['품목'] ?? item.product ?? '-';
+                div.innerHTML = `<i class='fas fa-map-marker-alt mr-1'></i> ${missBranch} | ${missRep} | ${missProd}`;
                 list.appendChild(div);
             });
             if (db.missing_data.length > 12) {
@@ -264,25 +292,35 @@
             Object.keys(db.branches || {}).forEach(br => bSel.add(new Option(br, br)));
         }
         (db.products || []).forEach(pd => pSel.add(new Option(pd, pd)));
+        const getMemberName = (m) => (m && (m['성명'] ?? m.name ?? m.rep ?? m.member ?? m['담당자'])) || 'Unknown';
 
         bSel.onchange = () => {
             const br = bSel.value;
             rSel.innerHTML = '<option value="NONE">담당자 선택</option>';
-            if(br !== 'TOTAL') db.branches[br].members.forEach(m => rSel.add(new Option(m.성명, m.성명)));
+            if(br !== 'TOTAL') db.branches[br].members.forEach(m => {
+                const name = getMemberName(m);
+                rSel.add(new Option(name, name));
+            });
             update();
         };
         pSel.onchange = update;
         rSel.onchange = update;
         periodMonthly.onclick = () => { periodMode = 'monthly'; syncPeriodButtons(); update(); };
         periodQuarterly.onclick = () => { periodMode = 'quarterly'; syncPeriodButtons(); update(); };
+        monthSel.onchange = update;
+        quarterSel.onchange = update;
 
         function syncPeriodButtons() {
             if (periodMode === 'monthly') {
                 periodMonthly.className = 'px-3 py-1 rounded-lg text-xs font-black bg-blue-600 text-white';
                 periodQuarterly.className = 'px-3 py-1 rounded-lg text-xs font-black bg-slate-200 text-slate-700';
+                monthSel.classList.remove('hidden');
+                quarterSel.classList.add('hidden');
             } else {
                 periodMonthly.className = 'px-3 py-1 rounded-lg text-xs font-black bg-slate-200 text-slate-700';
                 periodQuarterly.className = 'px-3 py-1 rounded-lg text-xs font-black bg-blue-600 text-white';
+                monthSel.classList.add('hidden');
+                quarterSel.classList.remove('hidden');
             }
         }
 
@@ -308,46 +346,84 @@
             return { labels: Array.from({ length: 12 }, (_, i) => `${i + 1}월`), actual, target };
         }
 
-        function updateMetrics(mode, payload) {
+        function updateMetrics(mode, payload, pSeries, currentIdx) {
             const setMetric = (idx, label, val, colorClass, borderClass, sizeClass = 'metric-value') => {
                 document.getElementById(`l_metric_${idx}`).innerText = label;
                 const vEl = document.getElementById(`v_metric_${idx}`);
-                vEl.innerText = val;
+                vEl.innerHTML = val;
                 vEl.className = `${sizeClass} ${colorClass} mt-2`;
                 document.getElementById(`card_metric_${idx}`).className = `card p-5 border-t-4 ${borderClass} mb-0 transition-colors`;
             };
 
             if(mode === 'group') {
                 const data = payload;
-                const ach = data.achieve ? data.achieve.toFixed(1) + '%' : '0.0%';
                 
-                let driverStr = '-';
-                if(data.analysis && data.analysis.importance) {
-                    const sorted = Object.entries(data.analysis.importance).sort((a,b)=>b[1]-a[1]);
-                    if(sorted.length > 0) driverStr = sorted[0][0];
+                // 1. 달성률(YTD 또는 분기 누적) 계산
+                let ytdActual = 0, ytdTarget = 0;
+                for(let i=0; i<=currentIdx; i++) {
+                    ytdActual += (pSeries.actual[i] || 0);
+                    ytdTarget += (pSeries.target[i] || 0);
+                }
+                const achStr = ytdTarget > 0 ? ((ytdActual / ytdTarget) * 100).toFixed(1) + '%' : '0.0%';
+                
+                // 2. 카드 2번 자리 (월별: CSF, 분기별: QoQ)
+                let c2Label = '핵심 성공 요인(CSF)';
+                let c2Val = '-';
+                let c2Col = 'text-slate-800';
+                let c2Border = 'border-emerald-500';
+                let c2Size = 'text-xl font-black';
+
+                if (periodMode === 'quarterly') {
+                    c2Label = '전분기 대비 성장률(QoQ)';
+                    if (currentIdx > 0) {
+                        const curQ = pSeries.actual[currentIdx] || 0;
+                        const prevQ = pSeries.actual[currentIdx - 1] || 0;
+                        if (prevQ > 0) {
+                            const qoq = ((curQ - prevQ) / prevQ) * 100;
+                            const isPos = qoq >= 0;
+                            c2Val = (isPos ? '증가 ' : '감소 ') + Math.abs(qoq).toFixed(1) + '%';
+                            c2Col = isPos ? 'text-emerald-500' : 'text-rose-500';
+                            c2Border = isPos ? 'border-emerald-500' : 'border-rose-500';
+                            c2Size = 'metric-value';
+                        } else if (curQ > 0) {
+                            c2Val = '증가 100.0%';
+                            c2Col = 'text-emerald-500';
+                            c2Border = 'border-emerald-500';
+                        }
+                    } else {
+                        c2Val = '-';
+                    }
+                } else {
+                    if(data.analysis && data.analysis.importance) {
+                        const sorted = Object.entries(data.analysis.importance).sort((a,b)=>b[1]-a[1]);
+                        if(sorted.length > 0) c2Val = sorted[0][0];
+                    }
                 }
                 
+                // 3 & 4. 성과지수/성장지수
                 const pi = data.avg && data.avg.PI ? data.avg.PI.toFixed(1) : '70.0';
                 const fgr = data.avg && data.avg.FGR ? data.avg.FGR.toFixed(1) : '70.0';
                 
-                const totalActual = (data.monthly_actual || []).reduce((a,b)=>a+b, 0);
-                const eff = (totalActual/1000000).toFixed(1) + "M";
+                // 5. 기간 평균 영업 효율
+                const effVal = (ytdActual / 1000000) / (currentIdx + 1);
+                const effStr = effVal.toFixed(1) + "M / " + (periodMode === 'monthly' ? '월' : '분기');
 
-                let precisionStr = "Extreme";
+                let precisionStr = "정상";
                 let precisionColor = "text-slate-500";
                 let precisionBorder = "border-slate-400";
                 if(db.missing_data && db.missing_data.length > 0) {
-                    precisionStr = "Review Data";
+                    precisionStr = "검토 필요";
                     precisionColor = "text-amber-600";
                     precisionBorder = "border-amber-500";
                 }
 
-                setMetric(1, '목표 달성률', ach, 'text-blue-600', 'border-blue-600');
-                setMetric(2, '핵심 성공 요인(CSF)', driverStr, 'font-black text-slate-800 text-xl', 'border-emerald-500', '');
+                const achLabel = periodMode === 'monthly' ? 'YTD 누적 달성률' : '분기 누적 달성률';
+                setMetric(1, achLabel, achStr, 'text-blue-600', 'border-blue-600');
+                setMetric(2, c2Label, c2Val, c2Col + ' ' + c2Size, c2Border, '');
                 setMetric(3, '성과지수(PI)', pi, 'text-amber-500', 'border-amber-500');
                 setMetric(4, '성장지수(FGR)', fgr, 'text-emerald-600', 'border-emerald-500');
-                setMetric(5, '영업 효율성', eff, 'font-black text-slate-700 text-xl', 'border-slate-400', '');
-                setMetric(6, '데이터 정밀도', precisionStr, `font-black text-xl ${precisionColor}`, precisionBorder, '');
+                setMetric(5, '기간 평균 영업 효율성', effStr, 'font-black text-slate-700 text-xl', 'border-slate-400', '');
+                setMetric(6, '데이터 정합성', precisionStr, `font-black text-xl ${precisionColor}`, precisionBorder, '');
 
             } else {
                 const m = payload.member;
@@ -359,11 +435,11 @@
                 const gini = m.gini || 0.0;
                 const coverage = ((1 - gini) * 100).toFixed(1) + '%';
                 
-                let integrity = "Good";
+                let integrity = "정상";
                 let intColor = "text-emerald-500";
                 let intBorder = "border-emerald-500";
                 if (m.PHR && m.PHR < 50) {
-                    integrity = "Needs Review";
+                    integrity = "검토 필요";
                     intColor = "text-amber-500";
                     intBorder = "border-amber-500";
                 }
@@ -374,7 +450,7 @@
                 };
 
                 const s1 = getStyle(hir);
-                setMetric(1, '유효행동(HIR)', hir, `font-black text-2xl ${s1.c}`, s1.b, '');
+                setMetric(1, '유효활동(HIR)', hir, `font-black text-2xl ${s1.c}`, s1.b, '');
                 const s2 = getStyle(rtr);
                 setMetric(2, '관계온도(RTR)', rtr, `font-black text-2xl ${s2.c}`, s2.b, '');
                 const s3 = getStyle(bcr);
@@ -385,11 +461,32 @@
                 const covStyle = gini > 0.6 ? {c: 'text-rose-500', b: 'border-rose-500'} : {c: 'text-indigo-600', b: 'border-indigo-500'};
                 setMetric(5, '거래처 커버리지', coverage, `font-black text-2xl ${covStyle.c}`, covStyle.b, '');
                 
-                setMetric(6, '데이터 성실도', integrity, `font-black text-xl ${intColor}`, intBorder, '');
+                setMetric(6, '데이터 정합성', integrity, `font-black text-xl ${intColor}`, intBorder, '');
             }
         }
 
         function update() {
+            // 기준 월 인식 (전체 데이터 기준)
+            const fallbackAct = db.total && db.total.monthly_actual ? db.total.monthly_actual : [];
+            const tAct = normalizeMonthly(fallbackAct);
+            let rawCurrentMonth = 0;
+            for(let i=11; i>=0; i--) { if(tAct[i] > 0) { rawCurrentMonth = i; break; } }
+            
+            let dataIdx = rawCurrentMonth;
+            let refText = `2026.${String(rawCurrentMonth+1).padStart(2, '0')}`;
+            if (periodMode === 'monthly') {
+                const selectedMonth = monthSel.value === 'AUTO' ? rawCurrentMonth : Number(monthSel.value);
+                dataIdx = Math.max(0, Math.min(11, selectedMonth));
+                refText = `2026.${String(dataIdx+1).padStart(2, '0')}`;
+            } else if (periodMode === 'quarterly') {
+                const autoQuarter = Math.floor(rawCurrentMonth / 3);
+                const selectedQuarter = quarterSel.value === 'AUTO' ? autoQuarter : Number(quarterSel.value);
+                dataIdx = Math.max(0, Math.min(3, selectedQuarter));
+                refText = `2026.${dataIdx+1}Q`;
+            }
+            document.getElementById('dataRefDate').innerText = `Data as of: ${refText}`;
+            console.log("Time-Intel Debug:", { rawCurrentMonth, dataIdx, periodMode, refText, sampleAct: tAct });
+
             const br = bSel.value; const prod = pSel.value; const rep = rSel.value;
             if(rep === 'NONE') {
                 document.getElementById('groupView').classList.remove('hidden');
@@ -401,32 +498,39 @@
                     data = (prod === 'ALL') ? db.branches[br] : db.branches[br].prod_analysis[prod];
                 }
                 if(data) {
-                    renderGroup(data, data.analysis || { importance: {}, correlation: {}, adj_correlation: {}, ccf: [0,0,0,0,0] }, br, prod);
-                    updateMetrics('group', data);
+                    const pSeries = buildPeriodSeries(data.monthly_actual, data.monthly_target);
+                    renderGroup(data, data.analysis || { importance: {}, correlation: {}, adj_correlation: {}, ccf: [0,0,0,0,0] }, br, prod, pSeries, dataIdx);
+                    updateMetrics('group', data, pSeries, dataIdx);
                 }
             } else {
                 document.getElementById('groupView').classList.add('hidden');
                 document.getElementById('indivView').classList.remove('hidden');
-                const mData = db.branches[br].members.find(x => x.성명 === rep);
+                const mData = db.branches[br].members.find(x => getMemberName(x) === rep);
                 if (mData) {
+                    const pSeries = buildPeriodSeries(mData.monthly_actual, mData.monthly_target);
                     renderIndividual(mData, db.branches[br].avg);
-                    updateMetrics('individual', { member: mData, branchAvg: db.branches[br].avg });
+                    updateMetrics('individual', { member: mData, branchAvg: db.branches[br].avg }, pSeries, dataIdx);
                 }
             }
         }
 
-        function renderGroup(data, ana, br, prod) {
+        function renderGroup(data, ana, br, prod, pSeries, currentIdx) {
             const ach = data.achieve || 0;
             document.getElementById('v_achieve_layer1').innerText = ach.toFixed(1) + "%";
             document.getElementById('v_achieve_bar').style.width = Math.min(ach, 100) + "%";
             document.getElementById('v_achieve_bar').className = ach >= 100 ? 'bg-emerald-500 h-4 rounded-full' : 'bg-blue-600 h-4 rounded-full';
-            document.getElementById('v_fgr_layer1').innerText = (ach > 98 ? "↑ 목표 초과 달성 페이스" : (ach > 0 ? "↓ 목표 미달 페이스" : ""));
+            document.getElementById('v_fgr_layer1').innerText = (
+                ach > 98 ? "On Track / Above Target" : (ach > 0 ? "Below Target - Needs Action" : "")
+            );
             
             // For Phase 1, override 'importance' with 8-behavior dummies if it contains old HIR/RTR keys
             let importance = ana.importance || {};
             if (Object.keys(importance).length === 0 || 'HIR' in importance) {
                 // Intro negative values to demonstrate Tornado properties
-                importance = { 'PT': 0.35, '시연': 0.15, '클로징': 0.25, '니즈환기': -0.10, '대면': 0.10, '컨택': -0.25, '접근': 0.20, '피드백': -0.05 };
+                importance = {
+                    'PT': 0.35, 'Demo': 0.15, 'Closing': 0.25, 'Needs': -0.10,
+                    'FaceToFace': 0.10, 'Contact': -0.25, 'Access': 0.20, 'Feedback': -0.05
+                };
             }
             
             // Tornado Chart Data Sorting
@@ -436,7 +540,6 @@
             
             const totalActual = (data.monthly_actual || []).reduce((a,b)=>a+b, 0);
 
-            const pSeries = buildPeriodSeries(data.monthly_actual, data.monthly_target);
             if(charts.gSales) charts.gSales.destroy();
             charts.gSales = new Chart(document.getElementById('chart_g_sales'), {
                 type: 'bar',
@@ -447,7 +550,7 @@
                             type: 'bar',
                             label: '실적',
                             data: pSeries.actual,
-                            backgroundColor: 'rgba(37,99,235,0.85)',
+                            backgroundColor: pSeries.labels.map((_, i) => i === currentIdx ? 'rgba(30,58,138,1)' : 'rgba(37,99,235,0.6)'),
                             order: 2
                         },
                         {
@@ -479,6 +582,24 @@
                     responsive: true,
                     maintainAspectRatio: false,
                     interaction: { mode: 'index' },
+                    plugins: { 
+                        legend: { position: 'bottom' },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if(label) label += ': ';
+                                    if(context.parsed.y !== null) {
+                                        label += context.dataset.type === 'line' ? context.parsed.y + '%' : context.parsed.y.toLocaleString();
+                                    }
+                                    if(context.dataIndex === currentIdx && context.dataset.type === 'bar') {
+                                        label += ' (Current YTD/QTD)';
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    },
                     scales: {
                         y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
                         y_sub: { position: 'right', min: 0, max: 150, grid: { display: false }, ticks: { callback: v => v + '%' } }
@@ -494,10 +615,10 @@
             charts.gRadar = new Chart(document.getElementById('chart_g_radar'), {
                 type: 'radar',
                 data: {
-                    labels: ['유효행동(HIR)','관계온도(RTR)','규칙성(BCR)','계획(PHR)','성과지수(PI)','성장률(FGR)'],
+                    labels: ['유효활동(HIR)','관계온도(RTR)','규칙성(BCR)','계획(PHR)','성과지수(PI)','성장률(FGR)'],
                     datasets: [
-                        { label: '현재단위', data: mappedData, borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.2)' },
-                        { label: '전사평균', data: mappedTotal, borderColor: '#cbd5e1', borderDash: [5, 5], fill: false }
+                        { label: '현재 수준', data: mappedData, borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.2)' },
+                        { label: '전사 평균', data: mappedTotal, borderColor: '#cbd5e1', borderDash: [5, 5], fill: false }
                     ]
                 },
                 options: { responsive: true, maintainAspectRatio: false, scales: { r:{ min:0, max:100, ticks:{display:false} } } }
@@ -518,7 +639,7 @@
                 data:{ 
                     labels: labels, 
                     datasets:[{ 
-                        label:'기여도 지수', 
+                        label:'Contribution', 
                         data: vals, 
                         backgroundColor: vals.map(v => v < 0 ? '#ef4444' : '#6366f1'),
                         borderRadius: 4
@@ -538,13 +659,15 @@
         }
 
         function renderIndividual(m, brAvg) {
-            const ach = (m.목표금액 > 0 ? (m.처방금액 / m.목표금액) * 100 : 0).toFixed(1);
+            const targetAmt = Number(m['목표금액'] ?? m.target_amount ?? 0);
+            const actualAmt = Number(m['처방금액'] ?? m.actual_amount ?? 0);
+            const ach = (targetAmt > 0 ? (actualAmt / targetAmt) * 100 : 0).toFixed(1);
             document.getElementById('v_indiv_ach').innerText = ach + "%";
-            document.getElementById('v_rank').innerText = (m.지점순위 || '-') + "위";
+            document.getElementById('v_rank').innerText = String(m['지점순위'] ?? m.rank ?? '-');
             document.getElementById('v_indiv_branch').innerText = document.getElementById('bSel').value;
             // Provide a default efficiency if undefined
             const efficiency = m.efficiency ? (m.efficiency/1000).toFixed(1) : "0.0";
-            document.getElementById('v_indiv_eff').innerText = efficiency + "k/점";
+            document.getElementById('v_indiv_eff').innerText = efficiency + "k/period";
             
             const gini = m.gini ? m.gini : 0.0;
             document.getElementById('v_gini').innerText = gini.toFixed(2);
@@ -552,7 +675,7 @@
             
             // Coaching Binding
             document.getElementById('v_coach_scenario').innerText = m.coach_scenario || "데이터 분석 중...";
-            document.getElementById('v_coach_action').innerText = m.coach_action || "충분한 실적 데이터가 수집되면 AI 처방이 렌더링 됩니다.";
+            document.getElementById('v_coach_action').innerText = m.coach_action || "충분한 실적 데이터가 수집되면 AI 처방이 자동으로 표시됩니다.";
             if(m.coach_scenario === 'The Ghost Hunter') {
                 document.getElementById('v_coach_scenario').className = 'text-2xl font-black text-rose-600';
             } else {
@@ -562,7 +685,10 @@
             // Tornado Chart Data
             let shapDict = m.shap || {};
             if (Object.keys(shapDict).length === 0 || 'HIR' in shapDict) {
-                shapDict = { 'PT': 0.25, '시연': 0.30, '클로징': -0.15, '니즈환기': 0.15, '대면': 0.25, '컨택': -0.25, '접근': -0.10, '피드백': 0.05 };
+                shapDict = {
+                    'PT': 0.25, 'Demo': 0.30, 'Closing': -0.15, 'Needs': 0.15,
+                    'FaceToFace': 0.25, 'Contact': -0.25, 'Access': -0.10, 'Feedback': 0.05
+                };
             }
             const sortedEntries = Object.entries(shapDict).sort((a, b) => a[1] - b[1]);
             const labels = sortedEntries.map(e => e[0]);
@@ -574,7 +700,7 @@
                 data:{ 
                     labels: labels, 
                     datasets:[{ 
-                        label:'개인 행동 기여도', 
+                        label:'Individual Contribution', 
                         data: vals, 
                         backgroundColor: vals.map(v => v < 0 ? '#ef4444' : '#8b5cf6'),
                         borderRadius: 4
@@ -635,15 +761,15 @@
                                 },
                                 label: function(context) {
                                     return [
-                                        '📊 MS: ' + context.parsed.x.toFixed(1) + '%',
-                                        '📈 Growth: ' + context.parsed.y.toFixed(1) + '%'
+                                        'MS: ' + context.parsed.x.toFixed(1) + '%',
+                                        '성장률: ' + context.parsed.y.toFixed(1) + '%'
                                     ];
                                 }
                             }
                         },
                         datalabels: {
                             display: function(context) {
-                                // 상위 50% MS 품목만 라벨 노출 시도, 겹치면 자동 숨김
+                                // 상위 50% MS 품목만 라벨 표시, 겹치면 자동 숨김
                                 return context.dataset.data[0].x >= medianMs ? 'auto' : false;
                             },
                             color: '#1e293b',
@@ -695,9 +821,20 @@
             const rL = ['HIR', 'RTR', 'BCR', 'PHR', 'PI', 'FGR'];
             const mappedM = rL.map(k => m[k] || 70);
             const mappedBr = rL.map(k => brAvg[k] || 70);
-            charts.rRadar = new Chart(document.getElementById('chart_r_radar'), { type:'radar', data:{ labels:['유효행동','관계온도','규칙성','계획','성과지수','성장률'], datasets:[{label:m.성명, data:mappedM, borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.3)'}, {label:'지점평균', data:mappedBr, borderDash:[5,5], borderColor:'#94a3b8'}] }, options:{ responsive:true, maintainAspectRatio:false, scales:{r:{min:0, max:100, ticks:{display:false}}} } });
+            charts.rRadar = new Chart(document.getElementById('chart_r_radar'), {
+                type: 'radar',
+                data: {
+                    labels: ['HIR', 'RTR', 'BCR', 'PHR', 'PI', 'FGR'],
+                    datasets: [
+                        { label: getMemberName(m), data: mappedM, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.3)' },
+                        { label: '지점평균', data: mappedBr, borderDash: [5, 5], borderColor: '#94a3b8' }
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: false, scales: { r: { min: 0, max: 100, ticks: { display: false } } } }
+            });
         }
         update();
     </script>
 </body>
 </html>
+
