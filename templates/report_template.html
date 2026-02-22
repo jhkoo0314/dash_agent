@@ -667,7 +667,7 @@
             document.getElementById('v_indiv_branch').innerText = document.getElementById('bSel').value;
             // Provide a default efficiency if undefined
             const efficiency = m.efficiency ? (m.efficiency/1000).toFixed(1) : "0.0";
-            document.getElementById('v_indiv_eff').innerText = efficiency + "k/period";
+            document.getElementById('v_indiv_eff').innerText = efficiency + "k/기간";
             
             const gini = m.gini ? m.gini : 0.0;
             document.getElementById('v_gini').innerText = gini.toFixed(2);
