@@ -41,12 +41,12 @@
 
         <!-- 6개 핵심 지표 카드 -->
         <div class='grid grid-cols-6 gap-4 mb-8'>
-            <div class='card p-5 border-t-4 border-blue-600 mb-0'><p class='metric-label'>목표 달성률</p><h3 id='v_achieve' class='metric-value text-blue-600'>-</h3></div>
-            <div class='card p-5 border-t-4 border-emerald-500 mb-0'><p class='metric-label'>핵심 성공 요인</p><h3 id='v_driver' class='text-xl font-black text-slate-800 mt-2'>-</h3></div>
-            <div class='card p-5 border-t-4 border-amber-500 mb-0'><p class='metric-label'>성과지수(PI)</p><h3 id='v_pi' class='metric-value text-amber-500'>-</h3></div>
-            <div class='card p-5 border-t-4 border-emerald-500 mb-0'><p class='metric-label'>성장지수(FGR)</p><h3 id='v_fgr' class='metric-value text-emerald-600'>-</h3></div>
-            <div class='card p-5 border-l-4 border-slate-400 mb-0'><p class='metric-label'>영업 효율성</p><h3 id='v_efficiency' class='text-xl font-black text-slate-700 mt-2'>-</h3></div>
-            <div id='quality_card' class='card p-5 border-l-4 border-slate-400 mb-0'><p class='metric-label'>데이터 정밀도</p><h3 id='v_precision' class='text-xl font-black text-slate-500 mt-2'>Extreme</h3></div>
+            <div id='card_metric_1' class='card p-5 border-t-4 border-blue-600 mb-0 transition-colors'><p id='l_metric_1' class='metric-label'>목표 달성률</p><h3 id='v_metric_1' class='metric-value text-blue-600'>-</h3></div>
+            <div id='card_metric_2' class='card p-5 border-t-4 border-emerald-500 mb-0 transition-colors'><p id='l_metric_2' class='metric-label'>핵심 성공 요인</p><h3 id='v_metric_2' class='text-xl font-black text-slate-800 mt-2'>-</h3></div>
+            <div id='card_metric_3' class='card p-5 border-t-4 border-amber-500 mb-0 transition-colors'><p id='l_metric_3' class='metric-label'>성과지수(PI)</p><h3 id='v_metric_3' class='metric-value text-amber-500'>-</h3></div>
+            <div id='card_metric_4' class='card p-5 border-t-4 border-emerald-500 mb-0 transition-colors'><p id='l_metric_4' class='metric-label'>성장지수(FGR)</p><h3 id='v_metric_4' class='metric-value text-emerald-600'>-</h3></div>
+            <div id='card_metric_5' class='card p-5 border-t-4 border-slate-400 mb-0 transition-colors'><p id='l_metric_5' class='metric-label'>영업 효율성</p><h3 id='v_metric_5' class='text-xl font-black text-slate-700 mt-2'>-</h3></div>
+            <div id='card_metric_6' class='card p-5 border-t-4 border-slate-400 mb-0 transition-colors'><p id='l_metric_6' class='metric-label'>데이터 정밀도</p><h3 id='v_metric_6' class='text-xl font-black text-slate-500 mt-2'>Extreme</h3></div>
         </div>
 
         <!-- 데이터 정밀도 경고 섹션 (레코드 누락) -->
@@ -258,9 +258,6 @@
                 more.innerText = `외 ${db.missing_data.length - 12}건 더 있음...`;
                 list.appendChild(more);
             }
-            document.getElementById('v_precision').innerText = "Review Data";
-            document.getElementById('v_precision').classList.replace('text-slate-500', 'text-amber-600');
-            document.getElementById('quality_card').classList.replace('border-slate-400', 'border-amber-500');
         }
 
         if(bSel.options.length <= 1) {
@@ -311,6 +308,87 @@
             return { labels: Array.from({ length: 12 }, (_, i) => `${i + 1}월`), actual, target };
         }
 
+        function updateMetrics(mode, payload) {
+            const setMetric = (idx, label, val, colorClass, borderClass, sizeClass = 'metric-value') => {
+                document.getElementById(`l_metric_${idx}`).innerText = label;
+                const vEl = document.getElementById(`v_metric_${idx}`);
+                vEl.innerText = val;
+                vEl.className = `${sizeClass} ${colorClass} mt-2`;
+                document.getElementById(`card_metric_${idx}`).className = `card p-5 border-t-4 ${borderClass} mb-0 transition-colors`;
+            };
+
+            if(mode === 'group') {
+                const data = payload;
+                const ach = data.achieve ? data.achieve.toFixed(1) + '%' : '0.0%';
+                
+                let driverStr = '-';
+                if(data.analysis && data.analysis.importance) {
+                    const sorted = Object.entries(data.analysis.importance).sort((a,b)=>b[1]-a[1]);
+                    if(sorted.length > 0) driverStr = sorted[0][0];
+                }
+                
+                const pi = data.avg && data.avg.PI ? data.avg.PI.toFixed(1) : '70.0';
+                const fgr = data.avg && data.avg.FGR ? data.avg.FGR.toFixed(1) : '70.0';
+                
+                const totalActual = (data.monthly_actual || []).reduce((a,b)=>a+b, 0);
+                const eff = (totalActual/1000000).toFixed(1) + "M";
+
+                let precisionStr = "Extreme";
+                let precisionColor = "text-slate-500";
+                let precisionBorder = "border-slate-400";
+                if(db.missing_data && db.missing_data.length > 0) {
+                    precisionStr = "Review Data";
+                    precisionColor = "text-amber-600";
+                    precisionBorder = "border-amber-500";
+                }
+
+                setMetric(1, '목표 달성률', ach, 'text-blue-600', 'border-blue-600');
+                setMetric(2, '핵심 성공 요인(CSF)', driverStr, 'font-black text-slate-800 text-xl', 'border-emerald-500', '');
+                setMetric(3, '성과지수(PI)', pi, 'text-amber-500', 'border-amber-500');
+                setMetric(4, '성장지수(FGR)', fgr, 'text-emerald-600', 'border-emerald-500');
+                setMetric(5, '영업 효율성', eff, 'font-black text-slate-700 text-xl', 'border-slate-400', '');
+                setMetric(6, '데이터 정밀도', precisionStr, `font-black text-xl ${precisionColor}`, precisionBorder, '');
+
+            } else {
+                const m = payload.member;
+                const hir = m.HIR ? m.HIR.toFixed(1) : '0.0';
+                const rtr = m.RTR ? m.RTR.toFixed(1) : '0.0';
+                const bcr = m.BCR ? m.BCR.toFixed(1) : '0.0';
+                const phr = m.PHR ? m.PHR.toFixed(1) : '0.0';
+                
+                const gini = m.gini || 0.0;
+                const coverage = ((1 - gini) * 100).toFixed(1) + '%';
+                
+                let integrity = "Good";
+                let intColor = "text-emerald-500";
+                let intBorder = "border-emerald-500";
+                if (m.PHR && m.PHR < 50) {
+                    integrity = "Needs Review";
+                    intColor = "text-amber-500";
+                    intBorder = "border-amber-500";
+                }
+                
+                const getStyle = (val) => {
+                    const v = parseFloat(val);
+                    return v < 70 ? {c: 'text-rose-500', b: 'border-rose-500'} : {c: 'text-slate-700', b: 'border-blue-400'};
+                };
+
+                const s1 = getStyle(hir);
+                setMetric(1, '유효행동(HIR)', hir, `font-black text-2xl ${s1.c}`, s1.b, '');
+                const s2 = getStyle(rtr);
+                setMetric(2, '관계온도(RTR)', rtr, `font-black text-2xl ${s2.c}`, s2.b, '');
+                const s3 = getStyle(bcr);
+                setMetric(3, '행동규칙성(BCR)', bcr, `font-black text-2xl ${s3.c}`, s3.b, '');
+                const s4 = getStyle(phr);
+                setMetric(4, '계획이행률(PHR)', phr, `font-black text-2xl ${s4.c}`, s4.b, '');
+                
+                const covStyle = gini > 0.6 ? {c: 'text-rose-500', b: 'border-rose-500'} : {c: 'text-indigo-600', b: 'border-indigo-500'};
+                setMetric(5, '거래처 커버리지', coverage, `font-black text-2xl ${covStyle.c}`, covStyle.b, '');
+                
+                setMetric(6, '데이터 성실도', integrity, `font-black text-xl ${intColor}`, intBorder, '');
+            }
+        }
+
         function update() {
             const br = bSel.value; const prod = pSel.value; const rep = rSel.value;
             if(rep === 'NONE') {
@@ -324,12 +402,16 @@
                 }
                 if(data) {
                     renderGroup(data, data.analysis || { importance: {}, correlation: {}, adj_correlation: {}, ccf: [0,0,0,0,0] }, br, prod);
+                    updateMetrics('group', data);
                 }
             } else {
                 document.getElementById('groupView').classList.add('hidden');
                 document.getElementById('indivView').classList.remove('hidden');
                 const mData = db.branches[br].members.find(x => x.성명 === rep);
-                if (mData) renderIndividual(mData, db.branches[br].avg);
+                if (mData) {
+                    renderIndividual(mData, db.branches[br].avg);
+                    updateMetrics('individual', { member: mData, branchAvg: db.branches[br].avg });
+                }
             }
         }
 
@@ -353,7 +435,6 @@
             const vals = sortedEntries.map(e => e[1]);
             
             const totalActual = (data.monthly_actual || []).reduce((a,b)=>a+b, 0);
-            document.getElementById('v_efficiency').innerText = (totalActual/1000000).toFixed(1) + "M";
 
             const pSeries = buildPeriodSeries(data.monthly_actual, data.monthly_target);
             if(charts.gSales) charts.gSales.destroy();
