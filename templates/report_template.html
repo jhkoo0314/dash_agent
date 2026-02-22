@@ -163,9 +163,10 @@
                         <p class='metric-label'>개인 달성률</p>
                         <h3 id='v_indiv_ach' class='text-4xl font-black text-amber-500 mt-2'>-</h3>
                     </div>
-                    <div class='card p-6 border-t-4 border-emerald-600 mb-0 flex flex-col justify-center items-center'>
-                        <p class='metric-label'>환산 효율(k/기간)</p>
-                        <h3 id='v_indiv_eff' class='text-3xl font-black text-emerald-600 mt-2'>-</h3>
+                    <div id='sustainabilityCard' class='card p-6 border-t-4 border-emerald-600 mb-0 flex flex-col justify-center items-center' title=''>
+                        <p class='metric-label'>실적 유지 예측</p>
+                        <h3 id='v_indiv_sustainability' class='text-3xl font-black text-emerald-500 mt-2'>-</h3>
+                        <p class='text-xs font-bold text-slate-500 mt-1'>점 (Score)</p>
                     </div>
                     <div class='card p-6 border-l-4 border-slate-800 mb-0 flex flex-col justify-center items-center'>
                         <p class='metric-label'>지점 내 순위</p>
@@ -217,11 +218,31 @@
                         <h4 class='mb-2'>품목 성과 매트릭스 (MS%)</h4>
                         <div class='chart-container'><canvas id='chart_r_pm'></canvas></div>
                     </div>
-                    <div class='card opacity-70'>
+                    <div id='giniCard' class='card opacity-70 border-l-8 border-emerald-500 transition-all duration-500'>
                         <h4 class='mb-2'>거래처 편중 리스크 분석 (Gini)</h4>
-                        <div class='flex flex-col items-center justify-center h-full'>
-                            <h1 id='v_gini' class='text-5xl font-black text-slate-800'>-</h1>
-                            <p class='text-slate-500 mt-2 font-bold'>지니 계수 (집중도)</p>
+                        <div class='flex flex-col justify-center h-full gap-4'>
+                            <div class='flex items-end justify-between'>
+                                <h1 id='v_gini' class='text-5xl font-black text-slate-800'>-</h1>
+                                <span id='giniRiskBadge' class='px-3 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-700'>Stable (안정)</span>
+                            </div>
+                            <p class='text-slate-500 font-bold'>지니 계수 (집중도)</p>
+                            <div class='w-full'>
+                                <div class='w-full h-4 rounded-full bg-slate-200 overflow-hidden'>
+                                    <div id='giniGaugeFill' class='h-4 rounded-full bg-emerald-500 transition-all duration-700 ease-out' style='clip-path: inset(0 100% 0 0);'></div>
+                                </div>
+                                <div class='flex justify-between text-[10px] font-bold text-slate-400 mt-1'>
+                                    <span>0.0 안정</span>
+                                    <span>0.3 주의</span>
+                                    <span>0.5 위험</span>
+                                    <span>1.0 고위험</span>
+                                </div>
+                            </div>
+                            <p id='gini_insight' class='text-sm font-bold text-slate-700 leading-relaxed'>
+                                거래처 포트폴리오 상태를 분석 중입니다.
+                            </p>
+                            <p id='coverage_text' class='text-sm font-black text-indigo-700'>
+                                거래처 커버리지: -
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -230,7 +251,47 @@
     </div>
 
     <script>
-        const db = /*DATA_JSON_PLACEHOLDER*/ { branches: {}, products: [], total: { achieve: 0, avg: { HIR: 0, RTR: 0, BCR: 0, PHR: 0 }, monthly_actual: [], monthly_target: [] }, total_avg: { HIR: 0, RTR: 0, BCR: 0, PHR: 0 }, missing_data: [] };
+        const db = /*DATA_JSON_PLACEHOLDER*/ {
+            branches: {
+                "서울지점": {
+                    members: [
+                        {
+                            "성명": "홍길동",
+                            "HIR": 85.0, "RTR": 78.0, "BCR": 92.0, "PHR": 95.0,
+                            "처방금액": 120000000, "목표금액": 100000000,
+                            "지점순위": 1,
+                            "shap": {"HIR": 0.4, "RTR": 0.3, "BCR": 0.2, "PHR": 0.1},
+                            "coach_scenario": "The Masterclass",
+                            "coach_action": "완벽한 선순환을 만들어내고 있습니다. 현재의 높은 활동량과 우수한 관계 유지 능력을 유지하며 Best Practice 사례로 공유를 권장합니다.",
+                            "efficiency": 120.5,
+                            "sustainability": 88.5,
+                            "gini": 0.25,
+                            "avg_ms": 15.0,
+                            "prod_matrix": [
+                                {"name": "인수액", "ms": 20.0, "growth": 5.0},
+                                {"name": "인슐정", "ms": 10.0, "growth": -2.0}
+                            ],
+                            "monthly_actual": [8000000, 9000000, 8500000, 11000000, 10000000, 12000000, 10500000, 11500000, 13000000, 12500000, 14000000, 15000000],
+                            "monthly_target": [9000000, 9000000, 9000000, 10000000, 10000000, 10000000, 11000000, 11000000, 12000000, 12000000, 13000000, 14000000]
+                        }
+                    ],
+                    avg: { HIR: 75.0, RTR: 70.0, BCR: 80.0, PHR: 85.0, PI: 95.0, FGR: 5.0 },
+                    achieve: 110.5,
+                    monthly_actual: [8000000, 9000000, 8500000, 11000000, 10000000, 12000000, 10500000, 11500000, 13000000, 12500000, 14000000, 15000000],
+                    monthly_target: [9000000, 9000000, 9000000, 10000000, 10000000, 10000000, 11000000, 11000000, 12000000, 12000000, 13000000, 14000000]
+                }
+            },
+            products: ["인수액", "인슐정"],
+            total: {
+                achieve: 110.5,
+                avg: { HIR: 75.0, RTR: 70.0, BCR: 80.0, PHR: 85.0 },
+                monthly_actual: [8000000, 9000000, 8500000, 11000000, 10000000, 12000000, 10500000, 11500000, 13000000, 12500000, 14000000, 15000000],
+                monthly_target: [9000000, 9000000, 9000000, 10000000, 10000000, 10000000, 11000000, 11000000, 12000000, 12000000, 13000000, 14000000]
+            },
+            total_avg: { HIR: 75.0, RTR: 70.0, BCR: 80.0, PHR: 85.0 },
+            missing_data: [],
+            data_health: { integrity_score: 100, mapped_fields: {"Sales_지점": "OK", "Target_지점": "OK"}, missing_fields: [] }
+        };
         let charts = {};
         const bSel = document.getElementById('bSel');
         const pSel = document.getElementById('pSel');
@@ -347,6 +408,27 @@
         }
 
         function updateMetrics(mode, payload, pSeries, currentIdx) {
+            const fmt = (num, digits = 1) => Number(num || 0).toLocaleString('ko-KR', {
+                minimumFractionDigits: digits,
+                maximumFractionDigits: digits
+            });
+            const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+            const periodPerf = (series, idx) => {
+                const arrA = (series && series.actual) ? series.actual : [];
+                const arrT = (series && series.target) ? series.target : [];
+                const i = Math.max(0, Math.min(arrA.length - 1, Number(idx || 0)));
+                const curA = Number(arrA[i] || 0);
+                const curT = Number(arrT[i] || 0);
+                const prevA = i > 0 ? Number(arrA[i - 1] || 0) : 0;
+                const pi = curT > 0 ? (curA / curT) * 100 : 0;
+                const fgr = prevA > 0 ? ((curA - prevA) / prevA) * 100 : 0;
+                const nonZero = arrA.filter(v => Number(v || 0) > 0);
+                const avgA = nonZero.length ? (nonZero.reduce((a, b) => a + Number(b || 0), 0) / nonZero.length) : 0;
+                const activityFactor = avgA > 0 ? (curA / avgA) : 1;
+                const perfFactor = pi > 0 ? (pi / 100) : 0.7;
+                const scale = clamp((activityFactor * 0.6) + (perfFactor * 0.4), 0.7, 1.3);
+                return { pi, fgr, scale };
+            };
             const setMetric = (idx, label, val, colorClass, borderClass, sizeClass = 'metric-value') => {
                 document.getElementById(`l_metric_${idx}`).innerText = label;
                 const vEl = document.getElementById(`v_metric_${idx}`);
@@ -405,8 +487,9 @@
                 const fgr = data.avg && data.avg.FGR ? data.avg.FGR.toFixed(1) : '70.0';
                 
                 // 5. 기간 평균 영업 효율
-                const effVal = (ytdActual / 1000000) / (currentIdx + 1);
-                const effStr = effVal.toFixed(1) + "M / " + (periodMode === 'monthly' ? '월' : '분기');
+                const effM = (ytdActual / 1000000) / (currentIdx + 1);
+                const effEok = effM / 100;
+                const effStr = `${fmt(effEok, 1)}억 원`;
 
                 let precisionStr = "정상";
                 let precisionColor = "text-slate-500";
@@ -422,46 +505,79 @@
                 setMetric(2, c2Label, c2Val, c2Col + ' ' + c2Size, c2Border, '');
                 setMetric(3, '성과지수(PI)', pi, 'text-amber-500', 'border-amber-500');
                 setMetric(4, '성장지수(FGR)', fgr, 'text-emerald-600', 'border-emerald-500');
-                setMetric(5, '기간 평균 영업 효율성', effStr, 'font-black text-slate-700 text-xl', 'border-slate-400', '');
+                setMetric(5, '월평균 처방 실적(억 원)', effStr, 'font-black text-slate-700 text-xl', 'border-slate-400', '');
                 setMetric(6, '데이터 정합성', precisionStr, `font-black text-xl ${precisionColor}`, precisionBorder, '');
 
             } else {
                 const m = payload.member;
-                const hir = m.HIR ? m.HIR.toFixed(1) : '0.0';
-                const rtr = m.RTR ? m.RTR.toFixed(1) : '0.0';
-                const bcr = m.BCR ? m.BCR.toFixed(1) : '0.0';
-                const phr = m.PHR ? m.PHR.toFixed(1) : '0.0';
-                
-                const gini = m.gini || 0.0;
-                const coverage = ((1 - gini) * 100).toFixed(1) + '%';
-                
-                let integrity = "정상";
-                let intColor = "text-emerald-500";
-                let intBorder = "border-emerald-500";
-                if (m.PHR && m.PHR < 50) {
-                    integrity = "검토 필요";
-                    intColor = "text-amber-500";
-                    intBorder = "border-amber-500";
-                }
+                const brAvg = payload.branchAvg || {};
+                const repPerf = periodPerf(pSeries, currentIdx);
+                const branchPerf = periodPerf(payload.branchSeries || pSeries, currentIdx);
+                const pi = repPerf.pi.toFixed(1);
+                const fgr = repPerf.fgr.toFixed(1);
+                const hir = clamp(Number(m.HIR || 0) * repPerf.scale, 0, 100).toFixed(1);
+                const rtr = clamp(Number(m.RTR || 0) * repPerf.scale, 0, 100).toFixed(1);
+                const bcr = clamp(Number(m.BCR || 0) * repPerf.scale, 0, 100).toFixed(1);
+                const phr = clamp(Number(m.PHR || 0) * repPerf.scale, 0, 100).toFixed(1);
                 
                 const getStyle = (val) => {
                     const v = parseFloat(val);
                     return v < 70 ? {c: 'text-rose-500', b: 'border-rose-500'} : {c: 'text-slate-700', b: 'border-blue-400'};
                 };
 
+                const getOutcomeStyle = (val, avgVal) => {
+                    const v = parseFloat(val);
+                    const a = Number(avgVal ?? 70);
+                    return v < a ? {c: 'text-rose-500', b: 'border-rose-500'} : {c: 'text-emerald-600', b: 'border-emerald-500'};
+                };
+
+                const p1 = getOutcomeStyle(pi, branchPerf.pi || brAvg.PI);
+                setMetric(1, '성과지수(PI)', pi, `font-black text-2xl ${p1.c}`, p1.b, '');
+                const p2 = getOutcomeStyle(fgr, branchPerf.fgr || brAvg.FGR);
+                setMetric(2, '성장지수(FGR)', fgr, `font-black text-2xl ${p2.c}`, p2.b, '');
                 const s1 = getStyle(hir);
-                setMetric(1, '유효활동(HIR)', hir, `font-black text-2xl ${s1.c}`, s1.b, '');
+                setMetric(3, '유효활동(HIR)', hir, `font-black text-2xl ${s1.c}`, s1.b, '');
                 const s2 = getStyle(rtr);
-                setMetric(2, '관계온도(RTR)', rtr, `font-black text-2xl ${s2.c}`, s2.b, '');
+                setMetric(4, '관계온도(RTR)', rtr, `font-black text-2xl ${s2.c}`, s2.b, '');
                 const s3 = getStyle(bcr);
-                setMetric(3, '행동규칙성(BCR)', bcr, `font-black text-2xl ${s3.c}`, s3.b, '');
+                setMetric(5, '행동규칙성(BCR)', bcr, `font-black text-2xl ${s3.c}`, s3.b, '');
                 const s4 = getStyle(phr);
-                setMetric(4, '계획이행률(PHR)', phr, `font-black text-2xl ${s4.c}`, s4.b, '');
-                
-                const covStyle = gini > 0.6 ? {c: 'text-rose-500', b: 'border-rose-500'} : {c: 'text-indigo-600', b: 'border-indigo-500'};
-                setMetric(5, '거래처 커버리지', coverage, `font-black text-2xl ${covStyle.c}`, covStyle.b, '');
-                
-                setMetric(6, '데이터 정합성', integrity, `font-black text-xl ${intColor}`, intBorder, '');
+                setMetric(6, '계획이행률(PHR)', phr, `font-black text-2xl ${s4.c}`, s4.b, '');
+            }
+        }
+
+        function updateGiniUI(giniValue) {
+            const g = Math.max(0, Math.min(1, Number(giniValue || 0)));
+            const giniText = document.getElementById('v_gini');
+            const badge = document.getElementById('giniRiskBadge');
+            const gauge = document.getElementById('giniGaugeFill');
+            const insight = document.getElementById('gini_insight');
+            const coverageText = document.getElementById('coverage_text');
+            const card = document.getElementById('giniCard');
+            if (!giniText || !badge || !gauge || !insight || !coverageText || !card) return;
+
+            giniText.innerText = g.toFixed(2);
+            gauge.style.clipPath = `inset(0 ${(1 - g) * 100}% 0 0)`;
+            coverageText.innerText = `거래처 장악력: ${((1 - g) * 100).toFixed(1)}%`;
+
+            if (g <= 0.3) {
+                badge.innerText = 'Stable (안정)';
+                badge.className = 'px-3 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-700';
+                gauge.className = 'h-4 rounded-full bg-emerald-500 transition-all duration-700 ease-out';
+                card.className = 'card opacity-70 border-l-8 border-emerald-500 transition-all duration-500';
+                insight.innerText = '거래처 포트폴리오가 매우 이상적입니다. 안정적인 실적 유지가 가능합니다.';
+            } else if (g <= 0.5) {
+                badge.innerText = 'Warning (주의)';
+                badge.className = 'px-3 py-1 rounded-full text-xs font-black bg-amber-100 text-amber-700';
+                gauge.className = 'h-4 rounded-full bg-amber-500 transition-all duration-700 ease-out';
+                card.className = 'card opacity-70 border-l-8 border-amber-500 transition-all duration-500';
+                insight.innerText = '특정 대형처 영향이 커지고 있습니다. 중소형 거래처 처방 확대로 리스크를 분산하세요.';
+            } else {
+                badge.innerText = 'Danger (위험)';
+                badge.className = 'px-3 py-1 rounded-full text-xs font-black bg-rose-100 text-rose-700';
+                gauge.className = 'h-4 rounded-full bg-rose-500 transition-all duration-700 ease-out';
+                card.className = 'card opacity-70 border-l-8 border-rose-500 transition-all duration-500';
+                insight.innerText = '거래처 편중도가 매우 높습니다. 핵심 거래처 변동 시 실적 급락 위험이 큽니다.';
             }
         }
 
@@ -484,7 +600,8 @@
                 dataIdx = Math.max(0, Math.min(3, selectedQuarter));
                 refText = `2026.${dataIdx+1}Q`;
             }
-            document.getElementById('dataRefDate').innerText = `Data as of: ${refText}`;
+            const refSuffix = periodMode === 'monthly' ? 'YTD' : 'QTD';
+            document.getElementById('dataRefDate').innerText = `기준: ${refText} (${refSuffix})`;
             console.log("Time-Intel Debug:", { rawCurrentMonth, dataIdx, periodMode, refText, sampleAct: tAct });
 
             const br = bSel.value; const prod = pSel.value; const rep = rSel.value;
@@ -508,8 +625,9 @@
                 const mData = db.branches[br].members.find(x => getMemberName(x) === rep);
                 if (mData) {
                     const pSeries = buildPeriodSeries(mData.monthly_actual, mData.monthly_target);
-                    renderIndividual(mData, db.branches[br].avg);
-                    updateMetrics('individual', { member: mData, branchAvg: db.branches[br].avg }, pSeries, dataIdx);
+                    const branchSeries = buildPeriodSeries(db.branches[br].monthly_actual, db.branches[br].monthly_target);
+                    renderIndividual(mData, db.branches[br].avg, pSeries, dataIdx);
+                    updateMetrics('individual', { member: mData, branchAvg: db.branches[br].avg, branchSeries }, pSeries, dataIdx);
                 }
             }
         }
@@ -658,20 +776,36 @@
             });
         }
 
-        function renderIndividual(m, brAvg) {
-            const targetAmt = Number(m['목표금액'] ?? m.target_amount ?? 0);
-            const actualAmt = Number(m['처방금액'] ?? m.actual_amount ?? 0);
-            const ach = (targetAmt > 0 ? (actualAmt / targetAmt) * 100 : 0).toFixed(1);
+        function renderIndividual(m, brAvg, pSeries, currentIdx) {
+            // 월/분기 선택 인덱스까지 누적값으로 담당자 성과를 동기화
+            let cumActual = 0;
+            let cumTarget = 0;
+            const safeIdx = Math.max(0, Math.min((pSeries?.actual?.length || 1) - 1, Number(currentIdx || 0)));
+            for (let i = 0; i <= safeIdx; i++) {
+                cumActual += Number((pSeries?.actual?.[i]) || 0);
+                cumTarget += Number((pSeries?.target?.[i]) || 0);
+            }
+
+            const ach = (cumTarget > 0 ? (cumActual / cumTarget) * 100 : 0).toFixed(1);
             document.getElementById('v_indiv_ach').innerText = ach + "%";
             document.getElementById('v_rank').innerText = String(m['지점순위'] ?? m.rank ?? '-');
             document.getElementById('v_indiv_branch').innerText = document.getElementById('bSel').value;
-            // Provide a default efficiency if undefined
-            const efficiency = m.efficiency ? (m.efficiency/1000).toFixed(1) : "0.0";
-            document.getElementById('v_indiv_eff').innerText = efficiency + "k/기간";
+
+            // 실적 유지 예측 점수(0~100): 백엔드 전달값(m.sustainability) 우선 사용
+            const sustainRaw = Number(
+                m.sustainability ??
+                ((Number(m.HIR || 0) + Number(m.RTR || 0) + Number(m.BCR || 0) + Number(m.PHR || 0)) / 4)
+            );
+            const sustainScore = Math.max(0, Math.min(100, sustainRaw));
+            const sustainEl = document.getElementById('v_indiv_sustainability');
+            const sustainCard = document.getElementById('sustainabilityCard');
+            sustainEl.innerText = sustainScore.toFixed(1);
+            sustainEl.className = 'text-3xl font-black mt-2 ' + (sustainScore >= 80 ? 'text-emerald-500' : (sustainScore >= 60 ? 'text-amber-500' : 'text-rose-500'));
+            sustainCard.className = 'card p-6 border-t-4 mb-0 flex flex-col justify-center items-center ' + (sustainScore >= 80 ? 'border-emerald-600' : (sustainScore >= 60 ? 'border-amber-500' : 'border-rose-500'));
+            sustainCard.title = sustainScore < 60 ? '행동 지표 부재로 인한 실적 하락 리스크가 높습니다' : '';
             
             const gini = m.gini ? m.gini : 0.0;
-            document.getElementById('v_gini').innerText = gini.toFixed(2);
-            document.getElementById('v_gini').classList = gini > 0.6 ? 'text-5xl font-black text-rose-600' : 'text-5xl font-black text-emerald-600';
+            updateGiniUI(gini);
             
             // Coaching Binding
             document.getElementById('v_coach_scenario').innerText = m.coach_scenario || "데이터 분석 중...";

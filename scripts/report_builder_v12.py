@@ -521,26 +521,24 @@ def build_final_reports(external_config=None):
         print("[CRITICAL] df_final is empty. There is no matching data between sales and targets.")
 
     # --- [코칭 룰 엔진] ---
-    def get_coaching_message(hir, rtr, bcr, ach, th_hir=70, th_rtr=70, th_bcr=70, th_ach=100):
-        # 마스터 로직 코칭 룰 
+    def get_coaching_message(hir, rtr, bcr, ach, th_hir=70.0, th_rtr=70.0, th_bcr=70.0, th_ach=100.0):
+        # 마스터 로직 코칭 룰 (교차 검증 매트릭스)
         if ach >= th_ach:
-            if hir >= th_hir and rtr >= th_rtr:
-                return "The Masterclass", "현재의 높은 활동량과 우수한 관계 유지 능력을 유지하세요. Best Practice 사례로 공유를 권장합니다."
-            elif hir < th_hir and rtr >= th_rtr:
-                return "The Relationship Builder", "고객과의 관계는 훌륭하나 활동량이 다소 부족합니다. 방문 커버리지를 늘려 파이프라인을 확장하세요."
-            elif hir >= th_hir and rtr < th_rtr:
-                return "The Volume Driver", "활동량은 우수하나 관계 깊이가 아쉽습니다. 핵심 고객층에 대한 심층적이고 퀄리티 높은 디테일링이 필요합니다."
+            if hir >= th_hir and rtr >= th_rtr and bcr >= th_bcr:
+                return "The Masterclass", "완벽한 선순환을 만들어내고 있습니다. 현재의 높은 활동량과 우수한 관계 유지 능력을 유지하며 Best Practice 사례로 공유를 권장합니다."
+            elif hir >= th_hir and bcr < th_bcr:
+                return "The Lucky Hunter", "목표는 달성했으나 몰아치기 영업이 의심됩니다. 방문 규칙성(BCR)을 높여 장기적이고 안정적인 파이프라인 관리가 필요합니다."
+            elif hir < th_hir and rtr < th_rtr:
+                return "The Data Ghost", "목표를 달성했으나 핵심 활동 데이터(HIR, RTR)가 누락되었거나 요행에 의한 실적일 수 있습니다. 활동 데이터 기록 및 일회성 매출 여부를 점검하세요."
             else:
-                return "The Lucky Star", "데이터상 유효행동과 관계온도가 낮음에도 목표를 달성했습니다. 외부 요인(시장 상황 등)이나 일회성 매출 여부를 점검하세요."
+                return "The Good Performer", "우수한 성과를 달성했습니다. 다만 일부 행동 지표의 개선을 통해 더욱 완벽한 퍼포먼스를 낼 수 있습니다."
         else:
-            if hir >= th_hir and bcr < th_bcr:
-                return "The Erratic Sprinter", "활동량은 많으나 방문이 불규칙합니다. 사전 계획(PHR)을 철저히 기획하여 균일하게 방문 일정을 안배하세요."
-            elif rtr < th_rtr and bcr >= th_bcr:
-                return "The Routine Visitor", "규칙적으로 꾸준히 방문하나 고객과의 관계 온도가 낮습니다. 단순 제품 전달을 넘어선 솔루션 제안(PT/니즈환기) 스킬 교육이 시급합니다."
-            elif hir < th_hir and bcr < th_bcr:
-                return "The Ghost Hunter", "활동량과 규칙성 모두 저조합니다. 근태 및 일일 활동 계획에 대한 밀착 코칭과 파이프라인 전면 재설계가 필요합니다."
+            if hir >= th_hir and rtr >= th_rtr:
+                return "The Strategic Sleeper", "현재 우수한 활동량과 관계 지표를 유지하고 있어 곧 실적으로 터질 잠재력이 큽니다. 성과에 조급해하지 말고 현재의 올바른 과정을 꾸준히 지속하세요."
+            elif hir < th_hir and rtr < th_rtr:
+                return "The Critical Zone", "실적 미달성과 함께 활동량 및 관계 지표가 모두 무너진 심각한 상태입니다. 즉각적인 밀착 코칭 및 파이프라인 전면 재설계가 시급합니다."
             else:
-                return "The Hard Worker", "성실하게 양질의 활동을 수행하고 있으나 성과로 이어지지 않고 있습니다. 타겟팅(Segment)이나 주력 품목(MS) 전략의 재점검이 필요합니다."
+                return "The Hard Worker", "성실하게 활동하고 있으나 성과로 연결되지 않고 있습니다. 효율성 강화를 위해 타겟팅(Segment)이나 주력 품목(MS) 전략의 전면 재점검이 필요합니다."
 
     # 3. JSON 데이터 트리 구축
     hierarchy = {
@@ -578,14 +576,13 @@ def build_final_reports(external_config=None):
     df_rep_raw_calc['REP_BCR'] = t_score(df_rep_raw_calc['BCR_raw'].values, T_MEAN, T_STD)
     df_rep_raw_calc['REP_ACH'] = (df_rep_raw_calc['처방금액'] / df_rep_raw_calc['목표금액'] * 100).fillna(0)
     
-    # 동적 Threshold (중앙값) 계산
-    th_hir = float(df_rep_raw_calc['REP_HIR'].median())
-    th_rtr = float(df_rep_raw_calc['REP_RTR'].median())
-    th_bcr = float(df_rep_raw_calc['REP_BCR'].median())
-    # 달성률은 100%를 기준으로 하되, 전반적으로 낮으면 중앙값 사용 고려 가능하나 일단 100 유지 또는 하향 조정
-    th_ach = 100.0 if df_rep_raw_calc['REP_ACH'].max() >= 100 else float(df_rep_raw_calc['REP_ACH'].median())
+    # 절대평가 기준 (T_MEAN 하드코딩)
+    th_hir = float(T_MEAN)
+    th_rtr = float(T_MEAN)
+    th_bcr = float(T_MEAN)
+    th_ach = 100.0
     
-    print(f"DEBUG: Coaching Thresholds -> HIR:{th_hir:.1f}, RTR:{th_rtr:.1f}, BCR:{th_bcr:.1f}, ACH:{th_ach:.1f}")
+    print(f"DEBUG: Coaching Thresholds (Absolute) -> HIR:{th_hir:.1f}, RTR:{th_rtr:.1f}, BCR:{th_bcr:.1f}, ACH:{th_ach:.1f}")
 
     for br in df_final['지점'].unique():
         df_br = df_final[df_final['지점'] == br]
@@ -658,7 +655,7 @@ def build_final_reports(external_config=None):
                 'shap': real_shap,
                 'coach_scenario': c_name,
                 'coach_action': c_action,
-                'efficiency': float(df_rep['처방금액'].sum() / (rep_hir + 1)),
+                'efficiency': float(df_rep['처방금액'].sum() / (rep_raw['HIR_W'].sum() + 1)) if not rep_raw.empty else 0.0,
                 'gini': float(calc_gini(df_rep['처방금액'])),
                 'avg_ms': avg_ms,
                 'prod_matrix': prod_matrix,
