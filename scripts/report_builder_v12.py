@@ -7,12 +7,18 @@ from sklearn.ensemble import RandomForestRegressor
 from pathlib import Path
 
 # --- [마스터 수식 로직] ---
-def t_score(s):
-    if len(s) < 2 or np.std(s) == 0: return np.full_like(s, 70.0)
-    return np.clip(((s - np.mean(s)) / np.std(s)) * 25 + 70, 0, 100)
+def t_score(s, t_mean=70.0, t_std=10.0):
+    if len(s) < 2 or np.std(s) == 0: return np.full_like(s, t_mean)
+    return np.clip(((s - np.mean(s)) / np.std(s)) * t_std + t_mean, 0, 100)
 
 def calc_achieve(actual, target):
     return float((actual / target) * 100) if target and target > 0 else 0.0
+
+def calc_gini(x):
+    x = np.sort(np.asarray(x))
+    if len(x) == 0 or np.sum(x) == 0: return 0.0
+    n = len(x)
+    return (np.sum((2 * np.arange(1, n + 1) - n - 1) * x)) / (n * np.sum(x))
 
 def run_full_analysis(target_df):
     if len(target_df) < 3: return None
@@ -24,8 +30,6 @@ def run_full_analysis(target_df):
         ccf = [float(np.nan_to_num(y.corr(X['HIR'].shift(i)))) for i in range(5)]
         corr_raw = target_df[['처방금액', 'HIR', 'RTR', 'BCR', 'PHR']].corr(method='spearman').fillna(0).to_dict()
         adj_corr = target_df[['처방금액', 'HIR', 'RTR', 'BCR', 'PHR']].corr(method='spearman').fillna(0)
-        adj_corr.loc['처방금액', 'HIR'] = min(0.85, adj_corr.loc['처방금액', 'HIR'] + 0.45)
-        adj_corr.loc['HIR', '처방금액'] = adj_corr.loc['처방금액', 'HIR']
         return {'importance': importance, 'ccf': ccf, 'correlation': corr_raw, 'adj_correlation': adj_corr.to_dict()}
     except: return None
 
@@ -378,6 +382,7 @@ def build_final_reports(external_config=None):
         W_ACT = external_config.get('hir_weights', {})
         W_SEG = external_config.get('pi_weights', {})
         print("[INFO] 외부 설정(Streamlit 슬라이더) 가중치를 적용합니다.")
+        T_MEAN, T_STD = 70.0, 10.0
     else:
         # 마스터 로직 파일 경로 수정
         logic_path = 'data/logic/SFE_Master_Logic_v1.0.xlsx'
@@ -387,6 +392,14 @@ def build_final_reports(external_config=None):
         xl = pd.ExcelFile(logic_path)
         W_ACT = dict(zip(xl.parse('Activity_Weights')['활동명'], xl.parse('Activity_Weights')['가중치']))
         W_SEG = dict(zip(xl.parse('Segment_Weights')['병원규모'], xl.parse('Segment_Weights')['보정계수']))
+        
+        try:
+            sys_setup = xl.parse('System_Setup')
+            T_MEAN = float(sys_setup.loc[sys_setup['설정항목'].str.contains('T-Score 평균', na=False), '설정값'].values[0])
+            T_STD = float(sys_setup.loc[sys_setup['설정항목'].str.contains('T-Score 편차', na=False), '설정값'].values[0])
+        except Exception as e:
+            print(f"[WARN] T-Score 설정 로드 실패: {e}")
+            T_MEAN, T_STD = 70.0, 10.0
 
     # 2. 지표 연산
     w_act_map = {str(k).strip(): v for k, v in W_ACT.items()}
@@ -394,21 +407,31 @@ def build_final_reports(external_config=None):
     df_raw['HIR_W'] = df_raw['activities'].map(w_act_map).fillna(1.0)
     df_raw['SEG_W'] = df_raw['segment'].map(W_SEG).fillna(1.0)
 
+    df_raw['날짜_ts'] = pd.to_datetime(df_raw['날짜'], errors='coerce')
+    current_time = pd.Timestamp.now()
+    t_days = (current_time - df_raw['날짜_ts']).dt.days.clip(lower=0)
+    df_raw['RTR_raw'] = np.exp(-0.035 * t_days).fillna(0)
+
     print(f"DEBUG: df_raw shape: {df_raw.shape}")
     print(f"DEBUG: df_raw columns: {df_raw.columns.tolist()}")
 
     group_cols = ['지점', '성명', '품목', '__k_branch', '__k_rep', '__k_prod']
-    actual_agg = df_raw.groupby(group_cols).agg({'처방금액': 'sum', '처방수량': 'sum', 'HIR_W': 'mean'}).reset_index()
+    actual_agg = df_raw.groupby(group_cols).agg({'처방금액': 'sum', '처방수량': 'sum', 'HIR_W': 'mean', 'RTR_raw': 'mean'}).reset_index()
     print(f"DEBUG: actual_agg shape: {actual_agg.shape}")
+
+    df_sorted = df_raw.sort_values(group_cols + ['날짜_ts'])
+    df_sorted['interval'] = df_sorted.groupby(group_cols)['날짜_ts'].diff().dt.days
+    bcr_raw = df_sorted.groupby(group_cols)['interval'].std().fillna(0).reset_index(name='BCR_raw')
+    bcr_raw['BCR_raw'] = -bcr_raw['BCR_raw']
 
     hir_raw = df_raw.groupby(group_cols).apply(lambda x: (x['HIR_W'] * x['SEG_W']).sum() / len(x), include_groups=False).reset_index(name='HIR_raw')
     df_master = pd.merge(actual_agg, hir_raw, on=group_cols)
-    df_master['HIR'] = t_score(df_master['HIR_raw'].values)
+    df_master = pd.merge(df_master, bcr_raw, on=group_cols, how='left')
     
-    np.random.seed(42)
-    df_master['RTR'] = t_score(np.random.normal(70, 15, size=len(df_master)))
-    df_master['BCR'] = t_score(np.random.normal(75, 10, size=len(df_master)))
-    df_master['PHR'] = t_score(np.random.normal(65, 20, size=len(df_master)))
+    df_master['HIR'] = t_score(df_master['HIR_raw'].values, T_MEAN, T_STD)
+    df_master['RTR'] = t_score(df_master['RTR_raw'].values, T_MEAN, T_STD)
+    df_master['BCR'] = t_score(df_master['BCR_raw'].values, T_MEAN, T_STD)
+    df_master['PHR'] = np.full_like(df_master['HIR'].values, T_MEAN)
 
     # standardized_sales에 기존 지표가 있으면 우선 사용
     # standardized_sales에 기존 지표가 있으면 우선 사용
@@ -429,9 +452,9 @@ def build_final_reports(external_config=None):
                 # If values are raw (e.g. 0~5), apply t_score. If already scaled (like 0-100), just use them.
                 # Usually standard raw values have small stdev
                 if (src.std() or 0) > 0:
-                    df_master[metric] = t_score(src.fillna(src.mean()).values)
+                    df_master[metric] = t_score(src.fillna(src.mean()).values, T_MEAN, T_STD)
                 else:
-                    df_master[metric] = np.full_like(src, 70.0) # 기본 점수
+                    df_master[metric] = np.full_like(src, T_MEAN) # 기본 점수
             df_master = df_master.drop(columns=[f'{metric}_src'])
 
     # 목표 매칭 및 누락 체크
@@ -491,8 +514,31 @@ def build_final_reports(external_config=None):
         
         for rep in df_br['성명'].unique():
             df_rep = df_br[df_br['성명'] == rep]
-            imp_base = hierarchy['branches'][br]['analysis']['importance'] if hierarchy['branches'][br]['analysis'] else {'HIR':0.25, 'RTR':0.25, 'BCR':0.25, 'PHR':0.25}
-            shap_mock = {k: float(v + np.random.normal(0, 0.05)) for k, v in imp_base.items()}
+            rep_analysis = run_full_analysis(df_rep)
+            if rep_analysis is not None:
+                real_shap = {k: float(v) for k, v in rep_analysis['importance'].items()}
+            else:
+                real_shap = {'HIR': np.nan, 'RTR': np.nan, 'BCR': np.nan, 'PHR': np.nan}
+            
+            prod_matrix = []
+            rep_raw = df_raw[(df_raw['지점'] == br) & (df_raw['성명'] == rep)]
+            total_sales = float(rep_raw['처방금액'].sum()) if not rep_raw.empty else 0.0
+            if total_sales > 0 and not rep_raw.empty:
+                max_m = rep_raw['월'].max()
+                prev_m = max_m - 1
+                for pd_name in hierarchy['products']:
+                    p_data = rep_raw[rep_raw['품목'] == pd_name]
+                    p_sales = float(p_data['처방금액'].sum())
+                    ms = (p_sales / total_sales * 100) if total_sales else 0.0
+                    cm_sales = float(p_data[p_data['월'] == max_m]['처방금액'].sum())
+                    pm_sales = float(p_data[p_data['월'] == prev_m]['처방금액'].sum())
+                    if pm_sales > 0:
+                        growth = ((cm_sales - pm_sales) / pm_sales) * 100
+                    else:
+                        growth = 100.0 if cm_sales > 0 else 0.0
+                    prod_matrix.append({'name': pd_name, 'ms': ms, 'growth': growth})
+            else:
+                prod_matrix = [{'name': pd_name, 'ms': 0.0, 'growth': 0.0} for pd_name in hierarchy['products']]
             
             hierarchy['branches'][br]['members'].append({
                 '성명': rep,
@@ -500,10 +546,10 @@ def build_final_reports(external_config=None):
                 'BCR': float(df_rep['BCR'].mean()), 'PHR': float(df_rep['PHR'].mean()),
                 '처방금액': float(df_rep['처방금액'].sum()), '목표금액': float(df_rep['목표금액'].sum()),
                 '지점순위': int(df_br.groupby('성명')['처방금액'].sum().rank(ascending=False)[rep]),
-                'shap': shap_mock,
+                'shap': real_shap,
                 'efficiency': float(df_rep['처방금액'].sum() / (df_rep['HIR'].mean() + 1)),
-                'gini': float(np.random.uniform(0.1, 0.7)),
-                'prod_matrix': [{'name': pd, 'ms': float(np.random.uniform(5, 25)), 'growth': float(np.random.uniform(-10, 30))} for pd in hierarchy['products']],
+                'gini': float(calc_gini(df_rep['처방금액'])),
+                'prod_matrix': prod_matrix,
                 'monthly_actual': df_raw[(df_raw['지점']==br) & (df_raw['성명']==rep)].groupby('월')['처방금액'].sum().reindex(month_axis, fill_value=0).tolist(),
                 'monthly_target': target_monthly[(target_monthly['지점']==br) & (target_monthly['성명']==rep)].groupby('월')['목표금액'].sum().reindex(month_axis, fill_value=0).tolist()
             })
