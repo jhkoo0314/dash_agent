@@ -41,6 +41,7 @@ def load_mapping_config():
     return {
         "지점": ["지점", "지점명", "Branch"], 
         "성명": ["성명", "담당자명", "Rep", "담당자"], 
+        "병원명": ["병원명", "거래처명", "요양기관명", "Hospital", "거래처"],
         "품목": ["품목", "품목명", "Product"],
         "처방금액": ["처방금액", "실적금액", "Amount", "실적"], 
         "목표금액": ["목표금액", "Target"],
@@ -196,6 +197,7 @@ with st.expander("📂 STEP 1. 데이터 선택 및 통합", expanded=True):
                 m_br = st.selectbox("지점(Branch)", options=cols, index=find_best_match("지점", cols, mapping_config))
                 m_rep = st.selectbox("담당자(Rep)", options=cols, index=find_best_match("성명", cols, mapping_config))
             with c2:
+                m_hosp = st.selectbox("병원명(Hospital)", options=cols, index=find_best_match("병원명", cols, mapping_config))
                 m_pd = st.selectbox("품목(Product)", options=cols, index=find_best_match("품목", cols, mapping_config))
                 m_val = st.selectbox("실적(Amount)", options=cols, index=find_best_match("처방금액", cols, mapping_config))
             with c3:
@@ -209,7 +211,7 @@ with st.expander("📂 STEP 1. 데이터 선택 및 통합", expanded=True):
                 # 학습 모드: 새로운 별명이면 저장
                 if learn_mapping:
                     updated = False
-                    mapping_pairs = [("지점", m_br), ("성명", m_rep), ("품목", m_pd), ("처방금액", m_val), ("activities", m_act), ("날짜", m_dt), ("segment", m_seg)]
+                    mapping_pairs = [("지점", m_br), ("성명", m_rep), ("병원명", m_hosp), ("품목", m_pd), ("처방금액", m_val), ("activities", m_act), ("날짜", m_dt), ("segment", m_seg)]
                     for key, val in mapping_pairs:
                         if key in mapping_config and val not in mapping_config[key]:
                             mapping_config[key].append(val)
@@ -220,7 +222,7 @@ with st.expander("📂 STEP 1. 데이터 선택 및 통합", expanded=True):
 
                 # 컬럼명 표준화 (안전한 매핑)
                 rename_map = {
-                    m_br: '지점', m_rep: '성명', m_pd: '품목',
+                    m_br: '지점', m_rep: '성명', m_hosp: '병원명', m_pd: '품목',
                     m_val: '처방금액', m_act: 'activities', 
                     m_dt: '날짜', m_seg: 'segment'
                 }
@@ -342,54 +344,212 @@ if st.session_state.clean_master is not None:
     
     st.subheader("📊 STEP 2. 전략 데이터 검증 및 추출")
     
-    # 지표 요약 시각화 (Ad-hoc)
-    t1, t2 = st.columns([1, 3])
-    with t1:
-        st.write("🔍 즉석 데이터 확인")
-        view_dim = st.selectbox("분석 차원", ['지점', '성명', '품목'])
-        view_metric = st.selectbox("분석 지표", ['처방금액', 'HIR_Raw', 'RTR_Raw', 'PHR_Raw'])
-    with t2:
-        view_df = df.groupby(view_dim)[view_metric].mean().reset_index()
-        fig = px.bar(view_df, x=view_dim, y=view_metric, template='plotly_white', color=view_metric)
-        st.plotly_chart(fig, use_container_width=True)
-
-    # 📦 리포트 빌더용 파일 추출 섹션
-    st.info("📦 **리포트 빌더 및 최종 결과물 생성**")
-    final_cols = ['지점', '성명', '품목', '처방금액', '처방수량', 'activities', 'segment', '날짜', 'HIR_Raw', 'RTR_Raw', 'PHR_Raw']
-    export_df = df[final_cols]
+    # 탭 생성
+    tab1, tab2 = st.tabs(["📊 1차 결과 템플릿", "🗺️ 전국병원 지도 뷰"])
     
-    c1, c2 = st.columns(2)
-    with c1:
-        csv_out = export_df.to_csv(index=False).encode('utf-8-sig')
-        st.download_button(
-            label="📥 표준 CSV 다운로드",
-            data=csv_out,
-            file_name="standardized_sales.csv",
-            mime="text/csv",
-            help="이 파일을 다운로드하여 별도로 보관할 수 있습니다."
-        )
+    with tab1:
+        # 지표 요약 시각화 (Ad-hoc)
+        t1, t2 = st.columns([1, 3])
+        with t1:
+            st.write("🔍 즉석 데이터 확인")
+            view_dim = st.selectbox("분석 차원", ['지점', '성명', '품목'])
+            view_metric = st.selectbox("분석 지표", ['처방금액', 'HIR_Raw', 'RTR_Raw', 'PHR_Raw'])
+        with t2:
+            view_df = df.groupby(view_dim)[view_metric].mean().reset_index()
+            fig = px.bar(view_df, x=view_dim, y=view_metric, template='plotly_white', color=view_metric)
+            st.plotly_chart(fig, use_container_width=True)
     
-    with c2:
-        if st.button("🛠️ 최종 전략 리포트(HTML) 생성", type="primary"):
-            with st.spinner("🚀 고차원 분석 엔진 가동 중..."):
-                try:
-                    # report_builder_v12의 로직 호출 (현재 슬라이더 설정 반영)
-                    from report_builder_v12 import build_final_reports
-                    output_file = build_final_reports(external_config=CONFIG)
-                    
-                    if output_file:
-                        st.success(f"✅ 리포트 생성 완료! \n\n 파일 위치: `{output_file}`")
+        # 📦 리포트 빌더용 파일 추출 섹션
+        st.info("📦 **리포트 빌더 및 최종 결과물 생성**")
+        final_cols = ['지점', '성명', '병원명', '품목', '처방금액', '처방수량', 'activities', 'segment', '날짜', 'HIR_Raw', 'RTR_Raw', 'PHR_Raw']
+        export_df = df[[c for c in final_cols if c in df.columns]]
+        
+        c1, c2 = st.columns(2)
+        with c1:
+            csv_out = export_df.to_csv(index=False).encode('utf-8-sig')
+            st.download_button(
+                label="📥 표준 CSV 다운로드",
+                data=csv_out,
+                file_name="standardized_sales.csv",
+                mime="text/csv",
+                help="이 파일을 다운로드하여 별도로 보관할 수 있습니다."
+            )
+        
+        with c2:
+            if st.button("🛠️ 최종 전략 리포트(HTML) 생성", type="primary"):
+                with st.spinner("🚀 고차원 분석 엔진 가동 중..."):
+                    try:
+                        # report_builder_v12의 로직 호출 (현재 슬라이더 설정 반영)
+                        from report_builder_v12 import build_final_reports
+                        output_file = build_final_reports(external_config=CONFIG)
                         
-                        # 생성된 HTML 파일을 바로 다운로드할 수 있게 제공
-                        with open(output_file, "rb") as f:
-                            st.download_button(
-                                label="🚀 생성된 대시보드 바로 다운로드",
-                                data=f,
-                                file_name=os.path.basename(output_file),
-                                mime="text/html"
-                            )
-                except Exception as e:
-                    st.error(f"❌ 리포트 생성 중 오류 발생: {str(e)}")
-    
-    st.divider()
-    st.dataframe(export_df.head(20))
+                        if output_file:
+                            st.success(f"✅ 리포트 생성 완료! \n\n 파일 위치: `{output_file}`")
+                            
+                            # 생성된 HTML 파일을 바로 다운로드할 수 있게 제공
+                            with open(output_file, "rb") as f:
+                                st.download_button(
+                                    label="🚀 생성된 대시보드 바로 다운로드",
+                                    data=f,
+                                    file_name=os.path.basename(output_file),
+                                    mime="text/html"
+                                )
+                    except Exception as e:
+                        st.error(f"❌ 리포트 생성 중 오류 발생: {str(e)}")
+        
+        st.divider()
+        st.dataframe(export_df.head(20))
+
+    with tab2:
+        st.markdown("#### 🗺️ 전국병원 지도 뷰")
+        st.info("기존 병원 마커 위에 현재 실적 데이터가 오버레이 됩니다. (파이썬에서 지도를 매번 연산하지 않고, 프론트엔드 단에서 DOM을 조작하여 데이터를 덮어씌웁니다.)")
+        
+        map_path = os.path.join("c:\\", "agent_b", "hospital_map.html")
+        if os.path.exists(map_path):
+            with open(map_path, "r", encoding="utf-8") as f:
+                html_data = f.read()
+                
+            # --- [데이터 오버레이 로직] ---
+            if '병원명' in df.columns:
+                hosp_df = df.groupby('병원명').agg({
+                    '처방금액': 'sum',
+                    '처방수량': 'sum',
+                    '성명': lambda x: ', '.join(x.dropna().unique())
+                }).reset_index()
+                
+                import json
+                overlay_data = {}
+                for _, row in hosp_df.iterrows():
+                    h_key = str(row['병원명']).strip()
+                    if h_key and h_key != 'nan':
+                        overlay_data[h_key] = {
+                            "처방금액": int(row['처방금액']) if pd.notnull(row['처방금액']) else 0,
+                            "처방수량": int(row['처방수량']) if pd.notnull(row['처방수량']) else 0,
+                            "담당자": str(row['성명']).strip()
+                        }
+                
+                overlay_json = json.dumps(overlay_data, ensure_ascii=False)
+                
+                # HTML 템플릿에 스크립트 삽입
+                inject_script = f"""
+                <script>
+                (function() {{
+                    const overlayData = {overlay_json};
+                    const overlayKeys = Object.keys(overlayData);
+                    let matchCount = 0;
+                    let markersFound = 0;
+                    let attempts = 0;
+
+                    function startOverlay() {{
+                        attempts++;
+                        let allMarkers = [];
+                        
+                        // 1. 모든 전역 객체 뒤져서 마커/클러스터/맵 찾기
+                        for (let key in window) {{
+                            let obj = window[key];
+                            if (!obj) continue;
+                            
+                            // 맵 또는 클러스터 그룹인 경우
+                            if (obj.eachLayer && (key.startsWith('map_') || key.startsWith('marker_cluster_'))) {{
+                                obj.eachLayer(layer => {{
+                                    if (layer.getTooltip) allMarkers.push(layer);
+                                    if (layer.eachLayer) {{ // 클러스터 내부 재탐색
+                                        try {{
+                                            layer.eachLayer(sub => {{ if(sub.getTooltip) allMarkers.push(sub); }});
+                                        }} catch(e) {{}}
+                                    }}
+                                }});
+                            }}
+                            
+                            // 개별 마커인 경우 (marker_...)
+                            if (key.startsWith('marker_') && obj.getTooltip) {{
+                                allMarkers.push(obj);
+                            }}
+                        }}
+                        
+                        // 중복 제거
+                        allMarkers = [...new Set(allMarkers)];
+                        markersFound = allMarkers.length;
+
+                        if (markersFound === 0 && attempts < 10) {{
+                            // 아직 지도가 안 그려졌으면 1초 뒤 재시도
+                            setTimeout(startOverlay, 1000);
+                            updateStatus("⏳ 지도를 로드 중입니다... (" + attempts + "/10)");
+                            return;
+                        }}
+
+                        allMarkers.forEach(marker => {{
+                            const tt = marker.getTooltip();
+                            if (!tt) return;
+                            
+                            const content = tt.getContent();
+                            const div = document.createElement('div');
+                            div.innerHTML = content;
+                            const hospName = div.innerText.trim();
+                            const hospNorm = hospName.replace(/\\s+/g, '').toLowerCase();
+                            
+                            let matchedKey = null;
+                            for(let i=0; i<overlayKeys.length; i++) {{
+                                let keyNorm = overlayKeys[i].replace(/\\s+/g, '').toLowerCase();
+                                if(hospNorm.indexOf(keyNorm) !== -1 || keyNorm.indexOf(hospNorm) !== -1) {{
+                                    matchedKey = overlayKeys[i];
+                                    break;
+                                }}
+                            }}
+                            
+                            if (matchedKey) {{
+                                matchCount++;
+                                const d = overlayData[matchedKey];
+                                const pop = marker.getPopup();
+                                if (pop) {{
+                                    const appendHtml = "<hr><h5 style='color:#0d6efd; font-weight:bold; margin-top:10px;'>🔹 실적 달성 현황</h5>" +
+                                                     "<div style='font-size:13px;'>" +
+                                                     "<b>실적금액:</b> <span style='color:red;'>" + d.처방금액.toLocaleString() + " 원</span><br>" +
+                                                     "<b>담당자:</b> " + d.담당자 + "</div>";
+                                    
+                                    const currentContent = pop.getContent();
+                                    if (typeof currentContent === 'string' && currentContent.indexOf('실적 달성 현황') === -1) {{
+                                        pop.setContent(currentContent.replace('</div>', appendHtml + '</div>'));
+                                    }} else if (currentContent instanceof HTMLElement && currentContent.innerHTML.indexOf('실적 달성 현황') === -1) {{
+                                        currentContent.innerHTML += appendHtml;
+                                    }}
+                                    
+                                    if (window.L && L.AwesomeMarkers) {{
+                                        marker.setIcon(L.AwesomeMarkers.icon({{
+                                            markerColor: 'green', iconColor: 'white', icon: 'star', prefix: 'fa'
+                                        }}));
+                                    }}
+                                }}
+                            }}
+                        }});
+
+                        updateStatus("<b>✅ 오버레이 완료</b><br>찾은 마커: " + markersFound + "<br>매칭 성공: " + matchCount);
+                    }}
+
+                    function updateStatus(msg) {{
+                        let d = document.getElementById('debug-box');
+                        if (!d) {{
+                            d = document.createElement('div');
+                            d.id = 'debug-box';
+                            d.style.cssText = "position:absolute;top:10px;left:50px;z-index:9999;background:white;padding:12px;border:2px solid #0d6efd;border-radius:10px;font-family:sans-serif;box-shadow:0 4px 10px rgba(0,0,0,0.2);min-width:150px;";
+                            document.body.appendChild(d);
+                        }}
+                        d.innerHTML = "<b>🔍 분석 엔진 가동</b><br>" + 
+                                     "<span style='font-size:12px;'>데이터 병원: " + overlayKeys.length + "개</span><br>" + msg;
+                    }}
+
+                    // 초기 실행
+                    setTimeout(startOverlay, 2000);
+                }})();
+                </script>
+                """
+                html_data += inject_script
+            else:
+                st.warning("⚠️ '병원명' 매핑이 안 되었습니다. STEP 1에서 요양기관명을 '병원명'으로 선택해주세요.")
+            # ------------------------------
+            
+            import streamlit.components.v1 as components
+            # 조립된 커스텀 HTML 렌더링
+            components.html(html_data, height=750)
+        else:
+            st.warning(f"설정된 맵 파일({map_path})을 아직 찾을 수 없습니다. (먼저 지도를 생성해주세요)")
