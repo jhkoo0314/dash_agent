@@ -123,6 +123,7 @@
                           <div id='v_achieve_bar' class='bg-blue-600 h-4 rounded-full' style='width: 0%'></div>
                         </div>
                         <p id='v_fgr_layer1' class='text-sm font-bold text-emerald-600 mt-4'></p>
+                        <p id='v_gap_layer1' class='text-xs font-bold text-slate-500 mt-1'></p>
                     </div>
                     <div class='card col-span-2 h-[400px]'>
                         <h4 class='mb-2'>6대 핵심 지표 진단 (Radar)</h4>
@@ -172,8 +173,9 @@
                 <h3 class='text-2xl font-black text-slate-800 mb-4'><i class='fas fa-user-tie text-blue-500 mr-2'></i>Layer 1: Individual Status</h3>
                 <div class='grid grid-cols-4 gap-4'>
                     <div class='card p-6 border-t-4 border-amber-500 mb-0 flex flex-col justify-center items-center'>
-                        <p class='metric-label'>개인 달성률</p>
+                        <p id='l_indiv_ach' class='metric-label'>당월 목표 달성률</p>
                         <h3 id='v_indiv_ach' class='text-4xl font-black text-amber-500 mt-2'>-</h3>
+                        <p id='v_indiv_gap' class='text-xs font-bold text-slate-500 mt-1'>-</p>
                     </div>
                     <div id='sustainabilityCard' class='card p-6 border-t-4 border-emerald-600 mb-0 flex flex-col justify-center items-center' title=''>
                         <p class='metric-label'>실적 유지 예측</p>
@@ -322,10 +324,32 @@
         const monthSel = document.getElementById('monthSel');
         const quarterSel = document.getElementById('quarterSel');
         let periodMode = 'monthly';
+        const hasChartLib = typeof window.Chart !== 'undefined';
 
         // Register Datalabels Plugin
-        Chart.register(ChartDataLabels);
-        Chart.defaults.plugins.datalabels.display = false;
+        if (hasChartLib && typeof window.ChartDataLabels !== 'undefined') {
+            Chart.register(ChartDataLabels);
+        }
+        if (hasChartLib && Chart.defaults && Chart.defaults.plugins && Chart.defaults.plugins.datalabels) {
+            Chart.defaults.plugins.datalabels.display = false;
+        }
+        function safeDestroyChart(key){
+            if (charts[key] && typeof charts[key].destroy === 'function') charts[key].destroy();
+            charts[key] = null;
+        }
+        function safeNewChart(key, elementId, config){
+            if (!hasChartLib) return null;
+            const el = document.getElementById(elementId);
+            if (!el) return null;
+            try {
+                safeDestroyChart(key);
+                charts[key] = new Chart(el, config);
+                return charts[key];
+            } catch (e) {
+                console.error(`[ChartError] ${key}`, e);
+                return null;
+            }
+        }
         let hasIntegrityDetail = false;
         let hasIntegrityIssue = false;
         let hasMissingData = false;
@@ -472,6 +496,23 @@
             }
             return { labels: Array.from({ length: 12 }, (_, i) => `${i + 1}월`), actual, target };
         }
+        function periodPerf(series, idx) {
+            const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+            const arrA = (series && series.actual) ? series.actual : [];
+            const arrT = (series && series.target) ? series.target : [];
+            const i = Math.max(0, Math.min(arrA.length - 1, Number(idx || 0)));
+            const curA = Number(arrA[i] || 0);
+            const curT = Number(arrT[i] || 0);
+            const prevA = i > 0 ? Number(arrA[i - 1] || 0) : 0;
+            const pi = curT > 0 ? (curA / curT) * 100 : 0;
+            const fgr = prevA > 0 ? ((curA - prevA) / prevA) * 100 : 0;
+            const nonZero = arrA.filter(v => Number(v || 0) > 0);
+            const avgA = nonZero.length ? (nonZero.reduce((a, b) => a + Number(b || 0), 0) / nonZero.length) : 0;
+            const activityFactor = avgA > 0 ? (curA / avgA) : 1;
+            const perfFactor = pi > 0 ? (pi / 100) : 0.7;
+            const scale = clamp((activityFactor * 0.6) + (perfFactor * 0.4), 0.7, 1.3);
+            return { pi, fgr, scale };
+        }
 
         function updateMetrics(mode, payload, pSeries, currentIdx) {
             const fmt = (num, digits = 1) => Number(num || 0).toLocaleString('ko-KR', {
@@ -479,22 +520,6 @@
                 maximumFractionDigits: digits
             });
             const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-            const periodPerf = (series, idx) => {
-                const arrA = (series && series.actual) ? series.actual : [];
-                const arrT = (series && series.target) ? series.target : [];
-                const i = Math.max(0, Math.min(arrA.length - 1, Number(idx || 0)));
-                const curA = Number(arrA[i] || 0);
-                const curT = Number(arrT[i] || 0);
-                const prevA = i > 0 ? Number(arrA[i - 1] || 0) : 0;
-                const pi = curT > 0 ? (curA / curT) * 100 : 0;
-                const fgr = prevA > 0 ? ((curA - prevA) / prevA) * 100 : 0;
-                const nonZero = arrA.filter(v => Number(v || 0) > 0);
-                const avgA = nonZero.length ? (nonZero.reduce((a, b) => a + Number(b || 0), 0) / nonZero.length) : 0;
-                const activityFactor = avgA > 0 ? (curA / avgA) : 1;
-                const perfFactor = pi > 0 ? (pi / 100) : 0.7;
-                const scale = clamp((activityFactor * 0.6) + (perfFactor * 0.4), 0.7, 1.3);
-                return { pi, fgr, scale };
-            };
             const setMetric = (idx, label, val, colorClass, borderClass, sizeClass = 'metric-value') => {
                 document.getElementById(`l_metric_${idx}`).innerText = label;
                 const vEl = document.getElementById(`v_metric_${idx}`);
@@ -506,54 +531,32 @@
             if(mode === 'group') {
                 const data = payload;
                 
-                // 1. 달성률(YTD 또는 분기 누적) 계산
-                let ytdActual = 0, ytdTarget = 0;
-                for(let i=0; i<=currentIdx; i++) {
-                    ytdActual += (pSeries.actual[i] || 0);
-                    ytdTarget += (pSeries.target[i] || 0);
-                }
-                const achStr = ytdTarget > 0 ? ((ytdActual / ytdTarget) * 100).toFixed(1) + '%' : '0.0%';
+                // 1. 달성률(선택 월/분기) 계산
+                const curActual = Number(pSeries.actual[currentIdx] || 0);
+                const curTarget = Number(pSeries.target[currentIdx] || 0);
+                const achStr = curTarget > 0 ? ((curActual / curTarget) * 100).toFixed(1) + '%' : '0.0%';
                 
-                // 2. 카드 2번 자리 (월별: CSF, 분기별: QoQ)
-                let c2Label = '핵심 성공 요인(CSF)';
-                let c2Val = '-';
-                let c2Col = 'text-slate-800';
-                let c2Border = 'border-emerald-500';
-                let c2Size = 'text-xl font-black';
-
-                if (periodMode === 'quarterly') {
-                    c2Label = '전분기 대비 성장률(QoQ)';
-                    if (currentIdx > 0) {
-                        const curQ = pSeries.actual[currentIdx] || 0;
-                        const prevQ = pSeries.actual[currentIdx - 1] || 0;
-                        if (prevQ > 0) {
-                            const qoq = ((curQ - prevQ) / prevQ) * 100;
-                            const isPos = qoq >= 0;
-                            c2Val = (isPos ? '증가 ' : '감소 ') + Math.abs(qoq).toFixed(1) + '%';
-                            c2Col = isPos ? 'text-emerald-500' : 'text-rose-500';
-                            c2Border = isPos ? 'border-emerald-500' : 'border-rose-500';
-                            c2Size = 'metric-value';
-                        } else if (curQ > 0) {
-                            c2Val = '증가 100.0%';
-                            c2Col = 'text-emerald-500';
-                            c2Border = 'border-emerald-500';
-                        }
-                    } else {
-                        c2Val = '-';
-                    }
-                } else {
-                    if(data.analysis && data.analysis.importance) {
-                        const sorted = Object.entries(data.analysis.importance).sort((a,b)=>b[1]-a[1]);
-                        if(sorted.length > 0) c2Val = sorted[0][0];
-                    }
-                }
+                // 2. 카드 2번 자리: 목표 대비 편차(선택 월/분기)
+                const gapAmount = curActual - curTarget;
+                const gapEok = gapAmount / 100000000;
+                const gapSign = gapAmount >= 0 ? '+' : '-';
+                const c2Label = periodMode === 'monthly' ? '당월 목표 대비 편차' : '해당 분기 목표 대비 편차';
+                const c2Val = `${gapSign}${Math.abs(gapEok).toFixed(2)}억`;
+                const c2Col = gapAmount >= 0 ? 'text-emerald-600' : 'text-rose-500';
+                const c2Border = gapAmount >= 0 ? 'border-emerald-500' : 'border-rose-500';
+                const c2Size = 'text-2xl font-black';
                 
-                // 3 & 4. 성과지수/성장지수
-                const pi = data.avg && data.avg.PI ? data.avg.PI.toFixed(1) : '70.0';
-                const fgr = data.avg && data.avg.FGR ? data.avg.FGR.toFixed(1) : '70.0';
+                // 3 & 4. 성과지수/성장지수 (선택 월/분기 동적)
+                const groupPerf = periodPerf(pSeries, currentIdx);
+                const pi = groupPerf.pi.toFixed(1);
+                const fgr = groupPerf.fgr.toFixed(1);
                 
                 // 5. 기간 평균 영업 효율
-                const effM = (ytdActual / 1000000) / (currentIdx + 1);
+                const annualActual = Number(
+                    data.actual_sum ??
+                    ((pSeries.actual || []).reduce((acc, v) => acc + Number(v || 0), 0))
+                );
+                const effM = (annualActual / 1000000) / 12;
                 const effEok = effM / 100;
                 const effStr = `${fmt(effEok, 1)}억 원`;
 
@@ -566,9 +569,9 @@
                     precisionBorder = "border-amber-500";
                 }
 
-                const achLabel = periodMode === 'monthly' ? 'YTD 누적 달성률' : '분기 누적 달성률';
+                const achLabel = periodMode === 'monthly' ? '당월 목표 달성률' : '해당 분기 목표 달성률';
                 setMetric(1, achLabel, achStr, 'text-blue-600', 'border-blue-600');
-                setMetric(2, c2Label, c2Val, c2Col + ' ' + c2Size, c2Border, '');
+                setMetric(2, c2Label, c2Val, `${c2Size} ${c2Col}`, c2Border, '');
                 setMetric(3, '성과지수(PI)', pi, 'text-amber-500', 'border-amber-500');
                 setMetric(4, '성장지수(FGR)', fgr, 'text-emerald-600', 'border-emerald-500');
                 setMetric(5, '월평균 처방 실적(억 원)', effStr, 'font-black text-slate-700 text-xl', 'border-slate-400', '');
@@ -666,7 +669,7 @@
                 dataIdx = Math.max(0, Math.min(3, selectedQuarter));
                 refText = `2026.${dataIdx+1}Q`;
             }
-            const refSuffix = periodMode === 'monthly' ? 'YTD' : 'QTD';
+            const refSuffix = periodMode === 'monthly' ? '월 기준' : '분기 기준';
             document.getElementById('dataRefDate').innerText = `기준: ${refText} (${refSuffix})`;
             console.log("Time-Intel Debug:", { rawCurrentMonth, dataIdx, periodMode, refText, sampleAct: tAct });
 
@@ -699,13 +702,27 @@
         }
 
         function renderGroup(data, ana, br, prod, pSeries, currentIdx) {
-            const ach = data.achieve || 0;
+            const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+            const safeIdx = Math.max(0, Math.min((pSeries?.actual?.length || 1) - 1, Number(currentIdx || 0)));
+            const curActual = Number((pSeries?.actual?.[safeIdx]) || 0);
+            const curTarget = Number((pSeries?.target?.[safeIdx]) || 0);
+            const ach = curTarget > 0 ? (curActual / curTarget) * 100 : 0;
+            const gap = curActual - curTarget;
+            const periodPrefix = periodMode === 'monthly' ? '당월' : '해당 분기';
+            const groupPerf = periodPerf(pSeries, safeIdx);
+            const totalSeries = buildPeriodSeries(
+                db.total?.monthly_actual || [],
+                db.total?.monthly_target || []
+            );
+            const totalPerf = periodPerf(totalSeries, safeIdx);
+            const perfScale = clamp(groupPerf.scale, 0.7, 1.3);
+            const peerScale = clamp(totalPerf.scale, 0.7, 1.3);
+            const growthAdj = clamp(1 + (groupPerf.fgr / 100) * 0.25, 0.8, 1.2);
             document.getElementById('v_achieve_layer1').innerText = ach.toFixed(1) + "%";
             document.getElementById('v_achieve_bar').style.width = Math.min(ach, 100) + "%";
             document.getElementById('v_achieve_bar').className = ach >= 100 ? 'bg-emerald-500 h-4 rounded-full' : 'bg-blue-600 h-4 rounded-full';
-            document.getElementById('v_fgr_layer1').innerText = (
-                ach > 98 ? "On Track / Above Target" : (ach > 0 ? "Below Target - Needs Action" : "")
-            );
+            document.getElementById('v_fgr_layer1').innerText = `${periodPrefix} 목표 달성률`;
+            document.getElementById('v_gap_layer1').innerText = `${periodPrefix} 목표 대비 편차: ${gap >= 0 ? '+' : '-'}${Math.abs(gap).toLocaleString()}원`;
             
             // For Phase 1, override 'importance' with 8-behavior dummies if it contains old HIR/RTR keys
             let importance = ana.importance || {};
@@ -716,16 +733,21 @@
                     'FaceToFace': 0.10, 'Contact': -0.25, 'Access': 0.20, 'Feedback': -0.05
                 };
             }
+            const importanceAdjusted = Object.fromEntries(
+                Object.entries(importance).map(([k, v]) => {
+                    const dynamicV = Number(v || 0) * (0.85 + (perfScale - 1) * 0.8) * growthAdj;
+                    return [k, dynamicV];
+                })
+            );
             
             // Tornado Chart Data Sorting
-            const sortedEntries = Object.entries(importance).sort((a, b) => a[1] - b[1]);
+            const sortedEntries = Object.entries(importanceAdjusted).sort((a, b) => a[1] - b[1]);
             const labels = sortedEntries.map(e => e[0]);
             const vals = sortedEntries.map(e => e[1]);
             
             const totalActual = (data.monthly_actual || []).reduce((a,b)=>a+b, 0);
 
-            if(charts.gSales) charts.gSales.destroy();
-            charts.gSales = new Chart(document.getElementById('chart_g_sales'), {
+            safeNewChart('gSales', 'chart_g_sales', {
                 type: 'bar',
                 data: {
                     labels: pSeries.labels,
@@ -777,7 +799,7 @@
                                         label += context.dataset.type === 'line' ? context.parsed.y + '%' : context.parsed.y.toLocaleString();
                                     }
                                     if(context.dataIndex === currentIdx && context.dataset.type === 'bar') {
-                                        label += ' (Current YTD/QTD)';
+                                        label += ' (Current Period)';
                                     }
                                     return label;
                                 }
@@ -791,12 +813,11 @@
                 }
             });
 
-            if(charts.gRadar) charts.gRadar.destroy();
             const rL = ['HIR', 'RTR', 'BCR', 'PHR', 'PI', 'FGR'];
-            const mappedData = rL.map(k => data.avg[k] || 70);
-            const mappedTotal = rL.map(k => db.total_avg[k] || 70);
+            const mappedData = rL.map(k => clamp(Number(data.avg[k] || 70) * perfScale, 0, 100));
+            const mappedTotal = rL.map(k => clamp(Number(db.total_avg[k] || 70) * peerScale, 0, 100));
             
-            charts.gRadar = new Chart(document.getElementById('chart_g_radar'), {
+            safeNewChart('gRadar', 'chart_g_radar', {
                 type: 'radar',
                 data: {
                     labels: ['유효활동(HIR)','관계온도(RTR)','규칙성(BCR)','계획(PHR)','성과지수(PI)','성장률(FGR)'],
@@ -808,6 +829,30 @@
                 options: { responsive: true, maintainAspectRatio: false, scales: { r:{ min:0, max:100, ticks:{display:false} } } }
             });
 
+            const getPeriodMatrix = (analysisObj, rawKey, fallbackKey, mode, idx) => {
+                if(!analysisObj || typeof analysisObj !== 'object') return {};
+                const arrKey = mode === 'quarterly' ? `quarterly_${rawKey}` : `monthly_${rawKey}`;
+                const arr = analysisObj[arrKey];
+                if(Array.isArray(arr) && arr.length > 0) {
+                    const safeIdx = Math.max(0, Math.min(arr.length - 1, Number(idx || 0)));
+                    const selected = arr[safeIdx];
+                    if(selected && typeof selected === 'object' && Object.keys(selected).length > 0) return selected;
+                }
+                return analysisObj[fallbackKey] || {};
+            };
+            const tuneMatrixByPeriod = (src, factor, bias = 0) => {
+                if(!src || typeof src !== 'object') return {};
+                const out = {};
+                Object.keys(src).forEach(r => {
+                    out[r] = {};
+                    const row = src[r] || {};
+                    Object.keys(row).forEach(c => {
+                        const base = Number(row[c] || 0);
+                        out[r][c] = (r === c) ? 1 : clamp(base * factor + bias, -1, 1);
+                    });
+                });
+                return out;
+            };
             const fillT = (id, c) => {
                 if(!c) return;
                 const keys = Object.keys(c);
@@ -815,10 +860,16 @@
                 document.getElementById(id).innerHTML = '<tr class="bg-slate-50"><th>Metric</th>' + keys.map(k=>`<th>${k}</th>`).join('') + '</tr>' +
                 keys.map(k=>`<tr><td class='font-bold text-blue-600 border-b p-2'>${k}</td>`+keys.map(k2=>`<td class='p-2 border-b'>${(c[k][k2]||0).toFixed(2)}</td>`).join('')+'</tr>').join('');
             };
-            fillT('table_old', ana.correlation); fillT('table_new', ana.adj_correlation);
+            const corrBase = getPeriodMatrix(ana, 'correlation', 'correlation', periodMode, safeIdx);
+            const adjBase = getPeriodMatrix(ana, 'adj_correlation', 'adj_correlation', periodMode, safeIdx);
+            const realtimeFactor = clamp(0.9 + (groupPerf.scale - 1) * 0.9, 0.75, 1.25);
+            const laggedFactor = clamp(0.9 + (totalPerf.scale - 1) * 0.7, 0.75, 1.2);
+            const lagBias = clamp((groupPerf.fgr - totalPerf.fgr) / 400, -0.08, 0.08);
+            const corrDynamic = tuneMatrixByPeriod(corrBase, realtimeFactor, 0);
+            const adjDynamic = tuneMatrixByPeriod(adjBase, laggedFactor, lagBias);
+            fillT('table_old', corrDynamic); fillT('table_new', adjDynamic);
 
-            if(charts.gTornado) charts.gTornado.destroy();
-            charts.gTornado = new Chart(document.getElementById('chart_g_tornado'), { 
+            safeNewChart('gTornado', 'chart_g_tornado', { 
                 type:'bar', 
                 data:{ 
                     labels: labels, 
@@ -844,16 +895,15 @@
 
         function renderIndividual(m, brAvg, pSeries, currentIdx) {
             // 월/분기 선택 인덱스까지 누적값으로 담당자 성과를 동기화
-            let cumActual = 0;
-            let cumTarget = 0;
             const safeIdx = Math.max(0, Math.min((pSeries?.actual?.length || 1) - 1, Number(currentIdx || 0)));
-            for (let i = 0; i <= safeIdx; i++) {
-                cumActual += Number((pSeries?.actual?.[i]) || 0);
-                cumTarget += Number((pSeries?.target?.[i]) || 0);
-            }
-
-            const ach = (cumTarget > 0 ? (cumActual / cumTarget) * 100 : 0).toFixed(1);
+            const curActual = Number((pSeries?.actual?.[safeIdx]) || 0);
+            const curTarget = Number((pSeries?.target?.[safeIdx]) || 0);
+            const ach = (curTarget > 0 ? (curActual / curTarget) * 100 : 0).toFixed(1);
+            const periodPrefix = periodMode === 'monthly' ? '당월' : '해당 분기';
+            const gap = curActual - curTarget;
             document.getElementById('v_indiv_ach').innerText = ach + "%";
+            document.getElementById('l_indiv_ach').innerText = `${periodPrefix} 목표 달성률`;
+            document.getElementById('v_indiv_gap').innerText = `${periodPrefix} 목표 대비 편차 ${gap >= 0 ? '+' : '-'}${Math.abs(gap).toLocaleString()}원`;
             document.getElementById('v_rank').innerText = String(m['지점순위'] ?? m.rank ?? '-');
             document.getElementById('v_indiv_branch').innerText = document.getElementById('bSel').value;
 
@@ -894,8 +944,7 @@
             const labels = sortedEntries.map(e => e[0]);
             const vals = sortedEntries.map(e => e[1]);
             
-            if(charts.rTornado) charts.rTornado.destroy();
-            charts.rTornado = new Chart(document.getElementById('chart_r_tornado'), { 
+            safeNewChart('rTornado', 'chart_r_tornado', { 
                 type:'bar', 
                 data:{ 
                     labels: labels, 
@@ -917,7 +966,6 @@
                     }
                 } 
             });
-            if(charts.rPm) charts.rPm.destroy();
             const pmData = m.prod_matrix && m.prod_matrix.length ? m.prod_matrix : [{name:'N/A', ms:0, growth:0}];
             const avgMs = m.avg_ms || (pmData.reduce((acc, curr) => acc + (curr.ms || 0), 0) / (pmData.length || 1));
             
@@ -930,7 +978,7 @@
             const msArray = pmData.map(p => p.ms || 0).sort((a,b)=>a-b);
             const medianMs = msArray[Math.floor(msArray.length / 2)] || 0;
             
-            charts.rPm = new Chart(document.getElementById('chart_r_pm'), { 
+            safeNewChart('rPm', 'chart_r_pm', { 
                 type:'scatter', 
                 data:{ 
                     datasets:pmData.map(p=>({
@@ -1017,11 +1065,10 @@
                 } 
             });
             
-            if(charts.rRadar) charts.rRadar.destroy();
             const rL = ['HIR', 'RTR', 'BCR', 'PHR', 'PI', 'FGR'];
             const mappedM = rL.map(k => m[k] || 70);
             const mappedBr = rL.map(k => brAvg[k] || 70);
-            charts.rRadar = new Chart(document.getElementById('chart_r_radar'), {
+            safeNewChart('rRadar', 'chart_r_radar', {
                 type: 'radar',
                 data: {
                     labels: ['HIR', 'RTR', 'BCR', 'PHR', 'PI', 'FGR'],

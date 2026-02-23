@@ -200,6 +200,7 @@ with st.expander("📂 STEP 1. 데이터 선택 및 통합", expanded=True):
                 m_hosp = st.selectbox("병원명(Hospital)", options=cols, index=find_best_match("병원명", cols, mapping_config))
                 m_pd = st.selectbox("품목(Product)", options=cols, index=find_best_match("품목", cols, mapping_config))
                 m_val = st.selectbox("실적(Amount)", options=cols, index=find_best_match("처방금액", cols, mapping_config))
+                m_tgt = st.selectbox("목표(Target)", options=cols, index=find_best_match("목표금액", cols, mapping_config))
             with c3:
                 m_act = st.selectbox("활동(Activity)", options=cols, index=find_best_match("activities", cols, mapping_config))
                 m_dt = st.selectbox("날짜(Date)", options=cols, index=find_best_match("날짜", cols, mapping_config))
@@ -211,7 +212,7 @@ with st.expander("📂 STEP 1. 데이터 선택 및 통합", expanded=True):
                 # 학습 모드: 새로운 별명이면 저장
                 if learn_mapping:
                     updated = False
-                    mapping_pairs = [("지점", m_br), ("성명", m_rep), ("병원명", m_hosp), ("품목", m_pd), ("처방금액", m_val), ("activities", m_act), ("날짜", m_dt), ("segment", m_seg)]
+                    mapping_pairs = [("지점", m_br), ("성명", m_rep), ("병원명", m_hosp), ("품목", m_pd), ("처방금액", m_val), ("목표금액", m_tgt), ("activities", m_act), ("날짜", m_dt), ("segment", m_seg)]
                     for key, val in mapping_pairs:
                         if key in mapping_config and val not in mapping_config[key]:
                             mapping_config[key].append(val)
@@ -223,7 +224,7 @@ with st.expander("📂 STEP 1. 데이터 선택 및 통합", expanded=True):
                 # 컬럼명 표준화 (안전한 매핑)
                 rename_map = {
                     m_br: '지점', m_rep: '성명', m_hosp: '병원명', m_pd: '품목',
-                    m_val: '처방금액', m_act: 'activities', 
+                    m_val: '처방금액', m_tgt: '목표금액', m_act: 'activities',
                     m_dt: '날짜', m_seg: 'segment'
                 }
                 
@@ -323,6 +324,8 @@ with st.expander("📂 STEP 1. 데이터 선택 및 통합", expanded=True):
                     amt = pd.to_numeric(df_std['처방금액'], errors='coerce')
                     qty = (amt / 1000).replace([np.inf, -np.inf], np.nan).fillna(0)
                     df_std['처방수량'] = qty.astype(int)
+                if '목표금액' in df_std.columns:
+                    df_std['목표금액'] = pd.to_numeric(df_std['목표금액'], errors='coerce').fillna(0)
                 
                 # 💡 6대 지표 마스터 엔진 가동
                 st.session_state.clean_master = calculate_master_engine(df_std, CONFIG)
@@ -361,7 +364,7 @@ if st.session_state.clean_master is not None:
     
         # 📦 리포트 빌더용 파일 추출 섹션
         st.info("📦 **리포트 빌더 및 최종 결과물 생성**")
-        final_cols = ['지점', '성명', '병원명', '품목', '처방금액', '처방수량', 'activities', 'segment', '날짜', 'HIR_Raw', 'RTR_Raw', 'PHR_Raw', 'PI_Raw']
+        final_cols = ['지점', '성명', '병원명', '품목', '처방금액', '목표금액', '처방수량', 'activities', 'segment', '날짜', 'HIR_Raw', 'RTR_Raw', 'PHR_Raw', 'PI_Raw']
         export_df = df[[c for c in final_cols if c in df.columns]]
         
         c1, c2 = st.columns(2)

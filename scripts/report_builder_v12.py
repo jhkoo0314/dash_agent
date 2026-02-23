@@ -14,6 +14,11 @@ def t_score(s, t_mean=70.0, t_std=10.0):
 def calc_achieve(actual, target):
     return float((actual / target) * 100) if target and target > 0 else 0.0
 
+def calc_gap(actual, target):
+    gap_amount = float(actual - target)
+    gap_rate = calc_achieve(actual, target) - 100.0 if target and target > 0 else 0.0
+    return gap_amount, gap_rate
+
 def calc_gini(x):
     x = np.sort(np.asarray(x))
     if len(x) == 0 or np.sum(x) == 0: return 0.0
@@ -22,6 +27,107 @@ def calc_gini(x):
 
 # 8대 유효 행동 기준 리스트
 ATOMIC_BEHAVIORS = ['PT', '시연', '클로징', '니즈환기', '대면', '컨택', '접근', '피드백']
+MATRIX_METRICS = ['HIR', 'RTR', 'BCR', 'PHR']
+
+def _zero_corr_dict():
+    keys = ['처방금액'] + MATRIX_METRICS
+    out = {}
+    for r in keys:
+        out[r] = {}
+        for c in keys:
+            out[r][c] = 1.0 if r == c else 0.0
+    return out
+
+def _safe_spearman(df_like):
+    cols = ['처방금액'] + MATRIX_METRICS
+    if df_like is None or len(df_like) < 2:
+        return _zero_corr_dict()
+    work = df_like.copy()
+    for c in cols:
+        if c not in work.columns:
+            work[c] = 0.0
+    work = work[cols].apply(pd.to_numeric, errors='coerce').fillna(0.0)
+    if work.shape[0] < 2:
+        return _zero_corr_dict()
+    corr = work.corr(method='spearman').fillna(0.0)
+    for c in cols:
+        if c not in corr.index:
+            corr.loc[c] = 0.0
+        if c not in corr.columns:
+            corr[c] = 0.0
+    corr = corr.loc[cols, cols]
+    for c in cols:
+        corr.loc[c, c] = 1.0
+    return corr.to_dict()
+
+def build_period_matrices(target_df):
+    """월/분기별 실시간 상관관계 + 1개월 후행(4주 보정) 상관관계."""
+    empty_month = [_zero_corr_dict() for _ in range(12)]
+    empty_quarter = [_zero_corr_dict() for _ in range(4)]
+    if target_df is None or len(target_df) == 0:
+        return {
+            'monthly_correlation': empty_month,
+            'monthly_adj_correlation': empty_month,
+            'quarterly_correlation': empty_quarter,
+            'quarterly_adj_correlation': empty_quarter,
+        }
+
+    df = target_df.copy()
+    for c in ['월', '처방금액'] + MATRIX_METRICS:
+        if c not in df.columns:
+            df[c] = 0.0
+    df['월'] = pd.to_numeric(df['월'], errors='coerce').fillna(0).astype(int)
+    df = df[df['월'].between(1, 12)]
+    if df.empty:
+        return {
+            'monthly_correlation': empty_month,
+            'monthly_adj_correlation': empty_month,
+            'quarterly_correlation': empty_quarter,
+            'quarterly_adj_correlation': empty_quarter,
+        }
+    group_keys = [k for k in ['월', '__k_branch', '__k_rep', '__k_prod'] if k in df.columns]
+    if not group_keys:
+        group_keys = ['월']
+    agg_ops = {'처방금액': 'sum', 'HIR': 'mean', 'RTR': 'mean', 'BCR': 'mean', 'PHR': 'mean'}
+    agg = df[group_keys + ['처방금액', 'HIR', 'RTR', 'BCR', 'PHR']].groupby(group_keys, as_index=False).agg(agg_ops)
+
+    id_keys = [k for k in ['__k_branch', '__k_rep', '__k_prod'] if k in agg.columns]
+    prev = agg[['월'] + id_keys + MATRIX_METRICS].copy()
+    prev['월'] = prev['월'] + 1
+    prev = prev.rename(columns={m: f'{m}_prev' for m in MATRIX_METRICS})
+    lagged = agg[['월'] + id_keys + ['처방금액']].merge(prev, on=['월'] + id_keys, how='left')
+
+    monthly_raw = []
+    monthly_adj = []
+    for m in range(1, 13):
+        raw_m = agg[agg['월'] == m][['처방금액'] + MATRIX_METRICS]
+        monthly_raw.append(_safe_spearman(raw_m))
+
+        adj_cols = ['처방금액'] + [f'{x}_prev' for x in MATRIX_METRICS]
+        adj_m = lagged[lagged['월'] == m][adj_cols].rename(
+            columns={f'{x}_prev': x for x in MATRIX_METRICS}
+        )
+        monthly_adj.append(_safe_spearman(adj_m))
+
+    quarterly_raw = []
+    quarterly_adj = []
+    for q in range(4):
+        months = [q * 3 + 1, q * 3 + 2, q * 3 + 3]
+        raw_q = agg[agg['월'].isin(months)][['처방금액'] + MATRIX_METRICS]
+        quarterly_raw.append(_safe_spearman(raw_q))
+
+        adj_cols = ['처방금액'] + [f'{x}_prev' for x in MATRIX_METRICS]
+        adj_q = lagged[lagged['월'].isin(months)][adj_cols].rename(
+            columns={f'{x}_prev': x for x in MATRIX_METRICS}
+        )
+        quarterly_adj.append(_safe_spearman(adj_q))
+
+    return {
+        'monthly_correlation': monthly_raw,
+        'monthly_adj_correlation': monthly_adj,
+        'quarterly_correlation': quarterly_raw,
+        'quarterly_adj_correlation': quarterly_adj,
+    }
 
 def run_full_analysis(target_df):
     if len(target_df) < 5: return None
@@ -51,7 +157,14 @@ def run_full_analysis(target_df):
         corr_raw = target_df[['처방금액'] + metrics_cols].corr(method='spearman').fillna(0).to_dict()
         adj_corr = target_df[['처방금액'] + metrics_cols].corr(method='spearman').fillna(0).to_dict()
         
-        return {'importance': importance, 'ccf': ccf, 'correlation': corr_raw, 'adj_correlation': adj_corr}
+        period_mats = build_period_matrices(target_df)
+        return {
+            'importance': importance,
+            'ccf': ccf,
+            'correlation': corr_raw,
+            'adj_correlation': adj_corr,
+            **period_mats
+        }
     except Exception as e: 
         print(f"[WARN] run_full_analysis error: {e}")
         return None
@@ -259,6 +372,8 @@ def build_final_reports(external_config=None):
 
     if '처방금액' in df_raw.columns:
         df_raw['처방금액'] = pd.to_numeric(df_raw['처방금액'], errors='coerce').fillna(0)
+    if '목표금액' in df_raw.columns:
+        df_raw['목표금액'] = pd.to_numeric(df_raw['목표금액'], errors='coerce').fillna(0)
     if '목표금액' in df_targets.columns:
         df_targets['목표금액'] = pd.to_numeric(df_targets['목표금액'], errors='coerce').fillna(0)
 
@@ -354,6 +469,85 @@ def build_final_reports(external_config=None):
         df_targets['__k_branch'] = normalize_key_series(df_targets[b_r])
         df_targets['__k_rep'] = normalize_key_series(df_targets[r_r])
         df_targets['__k_prod'] = normalize_key_series(df_targets[p_r])
+
+    def detect_month_col(df):
+        for c in ['월', '목표월', 'Month', 'month']:
+            if c in df.columns:
+                return c
+        return None
+
+    def normalize_target_source(df_source, dedupe_hospital=False):
+        if df_source.empty or '목표금액' not in df_source.columns:
+            return pd.DataFrame(columns=['__k_branch', '__k_rep', '__k_prod', '__month', '지점', '성명', '품목', '목표금액'])
+        month_col = detect_month_col(df_source)
+        src = df_source.copy()
+        if month_col is None:
+            src['__month'] = 1
+        else:
+            src['__month'] = pd.to_numeric(src[month_col], errors='coerce').fillna(1).astype(int)
+        for col in ['지점', '성명', '품목']:
+            if col not in src.columns:
+                src[col] = 'Unknown'
+        for k in ['__k_branch', '__k_rep', '__k_prod']:
+            if k not in src.columns:
+                src[k] = ''
+        src['목표금액'] = pd.to_numeric(src['목표금액'], errors='coerce').fillna(0)
+
+        # standardized_sales는 목표값이 거래/일자 단위로 반복될 수 있어 병원 단위 중복을 먼저 축소
+        if dedupe_hospital and '병원명' in src.columns:
+            src['병원명'] = src['병원명'].astype(str).str.strip()
+            src = (
+                src.groupby(['__k_branch', '__k_rep', '__k_prod', '__month', '병원명'], as_index=False)
+                .agg({
+                    '지점': 'first',
+                    '성명': 'first',
+                    '품목': 'first',
+                    '목표금액': 'first'
+                })
+            )
+
+        src = src[['__k_branch', '__k_rep', '__k_prod', '__month', '지점', '성명', '품목', '목표금액']]
+        src = src[src['목표금액'] > 0].copy()
+        return src
+
+    has_targets_in_standardized = (
+        use_standardized_sales
+        and ('목표금액' in df_raw.columns)
+        and (pd.to_numeric(df_raw['목표금액'], errors='coerce').fillna(0).sum() > 0)
+    )
+    target_sources = []
+    if has_targets_in_standardized:
+        target_sources.append(normalize_target_source(df_raw, dedupe_hospital=True))
+    target_sources.append(normalize_target_source(df_targets))
+
+    target_pool = pd.concat(target_sources, ignore_index=True) if target_sources else pd.DataFrame()
+    if not target_pool.empty:
+        # standardized_sales에 목표가 있을 때 이를 우선 사용하고, 없는 조합만 target 파일로 보강
+        if has_targets_in_standardized and len(target_sources) > 1 and not target_sources[1].empty:
+            std_keys = set(
+                target_sources[0][['__k_branch', '__k_rep', '__k_prod', '__month']]
+                .astype(str)
+                .agg('|'.join, axis=1)
+                .tolist()
+            )
+            target_from_file = target_sources[1].copy()
+            file_keys = (
+                target_from_file[['__k_branch', '__k_rep', '__k_prod', '__month']]
+                .astype(str).agg('|'.join, axis=1)
+            )
+            target_from_file = target_from_file[~file_keys.isin(std_keys)]
+            target_pool = pd.concat([target_sources[0], target_from_file], ignore_index=True)
+
+        target_pool = (
+            target_pool
+            .groupby(['__k_branch', '__k_rep', '__k_prod', '__month'], as_index=False)
+            .agg({
+                '지점': 'first',
+                '성명': 'first',
+                '품목': 'first',
+                '목표금액': 'sum'
+            })
+        )
 
     # CRM 활동명을 실적 데이터(activity)로 매핑
     if not df_crm.empty and 'activities' in df_crm.columns:
@@ -503,7 +697,14 @@ def build_final_reports(external_config=None):
             df_master = df_master.drop(columns=[f'{metric}_src'])
 
     # 목표 매칭 및 누락 체크
-    df_targets_agg = df_targets.groupby(['__k_branch','__k_rep','__k_prod'])['목표금액'].sum().reset_index()
+    if target_pool.empty:
+        df_targets_agg = pd.DataFrame(columns=['__k_branch', '__k_rep', '__k_prod', '목표금액'])
+    else:
+        df_targets_agg = (
+            target_pool
+            .groupby(['__k_branch', '__k_rep', '__k_prod'], as_index=False)['목표금액']
+            .sum()
+        )
     df_final = pd.merge(df_master, df_targets_agg, on=['__k_branch','__k_rep','__k_prod'], how='left')
     
     # 누락 데이터 추출 (실적은 있으나 목표가 없는 경우)
@@ -512,6 +713,8 @@ def build_final_reports(external_config=None):
     
     df_final = df_final.fillna(0)
     df_final['달성률'] = np.where(df_final['목표금액'] > 0, (df_final['처방금액'] / df_final['목표금액']) * 100, 0)
+    df_final['목표갭'] = df_final['처방금액'] - df_final['목표금액']
+    df_final['목표갭률'] = np.where(df_final['목표금액'] > 0, (df_final['처방금액'] / df_final['목표금액'] - 1.0) * 100, 0)
     
     print(f"DEBUG: df_raw shape: {df_raw.shape}")
     print(f"DEBUG: actual_agg shape: {actual_agg.shape}")
@@ -563,6 +766,26 @@ def build_final_reports(external_config=None):
 
     # 2.5 대표(Rep) 레벨 지표 정규화 (변별력 확보)
     # 개별 품목 T-score의 평균을 쓰면 변별력이 사라지므로(평균회귀), Rep 레벨에서 Raw 점수를 다시 T-score화
+    # target_pool 기반으로 월 타겟을 재구성하여 누락/빈 배열을 방지
+    if not target_pool.empty:
+        target_monthly = (
+            target_pool
+            .rename(columns={'__month': '월'})
+            .merge(
+                df_final[['__k_branch', '__k_rep', '__k_prod', '지점', '성명', '품목']].drop_duplicates(),
+                on=['__k_branch', '__k_rep', '__k_prod'],
+                how='inner',
+                suffixes=('', '_sales')
+            )
+        )
+        for c in ['지점', '성명', '품목']:
+            sales_col = f'{c}_sales'
+            if sales_col in target_monthly.columns:
+                target_monthly[c] = target_monthly[sales_col].fillna(target_monthly[c])
+                target_monthly = target_monthly.drop(columns=[sales_col])
+    elif target_monthly.empty:
+        target_monthly = pd.DataFrame(columns=['__k_branch', '__k_rep', '__k_prod', '월', '지점', '성명', '품목', '목표금액'])
+
     df_rep_raw_calc = df_final.groupby(['지점', '성명']).agg({
         'HIR_raw': 'mean',
         'RTR_raw': 'mean',
@@ -574,7 +797,11 @@ def build_final_reports(external_config=None):
     df_rep_raw_calc['REP_HIR'] = t_score(df_rep_raw_calc['HIR_raw'].values, T_MEAN, T_STD)
     df_rep_raw_calc['REP_RTR'] = t_score(df_rep_raw_calc['RTR_raw'].values, T_MEAN, T_STD)
     df_rep_raw_calc['REP_BCR'] = t_score(df_rep_raw_calc['BCR_raw'].values, T_MEAN, T_STD)
-    df_rep_raw_calc['REP_ACH'] = (df_rep_raw_calc['처방금액'] / df_rep_raw_calc['목표금액'] * 100).fillna(0)
+    df_rep_raw_calc['REP_ACH'] = np.where(
+        df_rep_raw_calc['목표금액'] > 0,
+        (df_rep_raw_calc['처방금액'] / df_rep_raw_calc['목표금액']) * 100,
+        0
+    )
     
     # 절대평가 기준 (T_MEAN 하드코딩)
     th_hir = float(T_MEAN)
@@ -586,30 +813,39 @@ def build_final_reports(external_config=None):
 
     for br in df_final['지점'].unique():
         df_br = df_final[df_final['지점'] == br]
+        df_br_raw = df_raw[df_raw['지점'] == br]
         hierarchy['branches'][br] = {
             'members': [],
             'avg': df_br[['HIR', 'RTR', 'BCR', 'PHR']].mean().to_dict(),
             'achieve': calc_achieve(df_br['처방금액'].sum(), df_br['목표금액'].sum()),
+            'actual_sum': float(df_br['처방금액'].sum()),
+            'target_sum': float(df_br['목표금액'].sum()),
+            'gap_amount': float(calc_gap(df_br['처방금액'].sum(), df_br['목표금액'].sum())[0]),
+            'gap_rate': float(calc_gap(df_br['처방금액'].sum(), df_br['목표금액'].sum())[1]),
             'monthly_actual': df_raw[df_raw['지점'] == br].groupby('월')['처방금액'].sum().reindex(month_axis, fill_value=0).tolist(),
             'monthly_target': target_monthly[target_monthly['지점'] == br].groupby('월')['목표금액'].sum().reindex(month_axis, fill_value=0).tolist(),
-            'analysis': run_full_analysis(df_br),
+            'analysis': run_full_analysis(df_br_raw),
             'prod_analysis': {pd: {
-                'analysis': run_full_analysis(df_br[df_br['품목']==pd]),
+                'analysis': run_full_analysis(df_br_raw[df_br_raw['품목']==pd]),
                 'achieve': calc_achieve(df_br[df_br['품목']==pd]['처방금액'].sum(), df_br[df_br['품목']==pd]['목표금액'].sum()),
+                'actual_sum': float(df_br[df_br['품목']==pd]['처방금액'].sum()),
+                'target_sum': float(df_br[df_br['품목']==pd]['목표금액'].sum()),
+                'gap_amount': float(calc_gap(df_br[df_br['품목']==pd]['처방금액'].sum(), df_br[df_br['품목']==pd]['목표금액'].sum())[0]),
+                'gap_rate': float(calc_gap(df_br[df_br['품목']==pd]['처방금액'].sum(), df_br[df_br['품목']==pd]['목표금액'].sum())[1]),
                 'avg': df_br[df_br['품목']==pd][['HIR','RTR','BCR','PHR']].mean().to_dict()
             } for pd in hierarchy['products']}
         }
         
         for rep in df_br['성명'].unique():
             df_rep = df_br[df_br['성명'] == rep]
-            rep_analysis = run_full_analysis(df_rep)
+            rep_raw = df_raw[(df_raw['지점'] == br) & (df_raw['성명'] == rep)]
+            rep_analysis = run_full_analysis(rep_raw)
             if rep_analysis is not None:
                 real_shap = {k: float(v) for k, v in rep_analysis['importance'].items()}
             else:
                 real_shap = {b: np.nan for b in ATOMIC_BEHAVIORS}
             
             prod_matrix = []
-            rep_raw = df_raw[(df_raw['지점'] == br) & (df_raw['성명'] == rep)]
             total_sales = float(rep_raw['처방금액'].sum()) if not rep_raw.empty else 0.0
             if total_sales > 0 and not rep_raw.empty:
                 max_m = rep_raw['월'].max()
@@ -651,6 +887,9 @@ def build_final_reports(external_config=None):
                 '성명': rep,
                 'HIR': rep_hir, 'RTR': rep_rtr, 'BCR': rep_bcr, 'PHR': float(df_rep['PHR'].mean()),
                 '처방금액': float(df_rep['처방금액'].sum()), '목표금액': float(df_rep['목표금액'].sum()),
+                'achieve': calc_achieve(df_rep['처방금액'].sum(), df_rep['목표금액'].sum()),
+                'gap_amount': float(calc_gap(df_rep['처방금액'].sum(), df_rep['목표금액'].sum())[0]),
+                'gap_rate': float(calc_gap(df_rep['처방금액'].sum(), df_rep['목표금액'].sum())[1]),
                 '지점순위': int(df_br.groupby('성명')['처방금액'].sum().rank(ascending=False)[rep]),
                 'shap': real_shap,
                 'coach_scenario': c_name,
@@ -664,18 +903,26 @@ def build_final_reports(external_config=None):
             })
 
     hierarchy['total_prod_analysis'] = { pd: {
-        'analysis': run_full_analysis(df_final[df_final['품목']==pd]),
+        'analysis': run_full_analysis(df_raw[df_raw['품목']==pd]),
         'monthly_actual': df_raw[df_raw['품목']==pd].groupby('월')['처방금액'].sum().reindex(month_axis, fill_value=0).tolist(),
         'monthly_target': target_monthly[target_monthly['품목']==pd].groupby('월')['목표금액'].sum().reindex(month_axis, fill_value=0).tolist(),
         'achieve': calc_achieve(df_final[df_final['품목']==pd]['처방금액'].sum(), df_final[df_final['품목']==pd]['목표금액'].sum()),
+        'actual_sum': float(df_final[df_final['품목']==pd]['처방금액'].sum()),
+        'target_sum': float(df_final[df_final['품목']==pd]['목표금액'].sum()),
+        'gap_amount': float(calc_gap(df_final[df_final['품목']==pd]['처방금액'].sum(), df_final[df_final['품목']==pd]['목표금액'].sum())[0]),
+        'gap_rate': float(calc_gap(df_final[df_final['품목']==pd]['처방금액'].sum(), df_final[df_final['품목']==pd]['목표금액'].sum())[1]),
         'avg': df_final[df_final['품목']==pd][['HIR','RTR','BCR','PHR']].mean().to_dict()
     } for pd in hierarchy['products']}
 
     hierarchy['total'] = {
-        'analysis': run_full_analysis(df_final), 'avg': hierarchy['total_avg'],
+        'analysis': run_full_analysis(df_raw), 'avg': hierarchy['total_avg'],
         'monthly_actual': df_raw.groupby('월')['처방금액'].sum().reindex(month_axis, fill_value=0).tolist(),
         'monthly_target': target_monthly.groupby('월')['목표금액'].sum().reindex(month_axis, fill_value=0).tolist(),
-        'achieve': calc_achieve(df_final['처방금액'].sum(), df_final['목표금액'].sum())
+        'achieve': calc_achieve(df_final['처방금액'].sum(), df_final['목표금액'].sum()),
+        'actual_sum': float(df_final['처방금액'].sum()),
+        'target_sum': float(df_final['목표금액'].sum()),
+        'gap_amount': float(calc_gap(df_final['처방금액'].sum(), df_final['목표금액'].sum())[0]),
+        'gap_rate': float(calc_gap(df_final['처방금액'].sum(), df_final['목표금액'].sum())[1])
     }
 
     # 4. 파일 생성
