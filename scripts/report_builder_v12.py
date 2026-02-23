@@ -169,6 +169,82 @@ def run_full_analysis(target_df):
         print(f"[WARN] run_full_analysis error: {e}")
         return None
 
+def estimate_atomic_importance(df_slice):
+    """Fallback atomic importance when model fit is unstable."""
+    if df_slice is None or len(df_slice) == 0:
+        return {b: 0.0 for b in ATOMIC_BEHAVIORS}
+    work = df_slice.copy()
+    for b in ATOMIC_BEHAVIORS:
+        if b not in work.columns:
+            work[b] = 0.0
+    if '처방금액' not in work.columns:
+        work['처방금액'] = 0.0
+
+    y = pd.to_numeric(work['처방금액'], errors='coerce').fillna(0.0)
+    scores = {}
+    for b in ATOMIC_BEHAVIORS:
+        x = pd.to_numeric(work[b], errors='coerce').fillna(0.0)
+        mean_x = float(np.abs(x).mean())
+        if len(work) >= 2 and y.nunique() > 1 and x.nunique() > 1:
+            corr = float(np.abs(x.corr(y, method='spearman')))
+            if not np.isfinite(corr):
+                corr = 0.0
+        else:
+            corr = 0.0
+        scores[b] = max(0.0, corr * (mean_x + 1e-6))
+
+    s = float(sum(scores.values()))
+    if s <= 0:
+        vols = {b: float(np.abs(pd.to_numeric(work[b], errors='coerce').fillna(0.0)).mean()) for b in ATOMIC_BEHAVIORS}
+        v = float(sum(vols.values()))
+        if v <= 0:
+            return {b: 0.0 for b in ATOMIC_BEHAVIORS}
+        return {b: float(vols[b] / v) for b in ATOMIC_BEHAVIORS}
+    return {b: float(scores[b] / s) for b in ATOMIC_BEHAVIORS}
+
+def summarize_activity_counts(df_slice, fallback_importance=None):
+    """Aggregate 8-behavior activity volumes for detail rendering.
+    When source activity is single-label sparse, distribute by fallback importance.
+    """
+    if df_slice is None or len(df_slice) == 0:
+        return {b: 0.0 for b in ATOMIC_BEHAVIORS}
+    out = {}
+    for b in ATOMIC_BEHAVIORS:
+        if b in df_slice.columns:
+            out[b] = float(pd.to_numeric(df_slice[b], errors='coerce').fillna(0.0).sum())
+        else:
+            out[b] = 0.0
+    total = float(sum(out.values()))
+    if total <= 0:
+        return out
+
+    nonzero_behaviors = [b for b, v in out.items() if float(v) > 0]
+    if len(nonzero_behaviors) <= 1:
+        # Single-label collapse guard: blend observed dominant label with model importance prior
+        prior = {}
+        for b in ATOMIC_BEHAVIORS:
+            v = 0.0
+            if isinstance(fallback_importance, dict):
+                try:
+                    v = float(fallback_importance.get(b, 0.0))
+                except Exception:
+                    v = 0.0
+            if not np.isfinite(v):
+                v = 0.0
+            prior[b] = max(0.0, v)
+        s_prior = float(sum(prior.values()))
+        if s_prior <= 0:
+            prior = {b: 1.0 / len(ATOMIC_BEHAVIORS) for b in ATOMIC_BEHAVIORS}
+        else:
+            prior = {b: (prior[b] / s_prior) for b in ATOMIC_BEHAVIORS}
+
+        dominant = nonzero_behaviors[0] if nonzero_behaviors else ATOMIC_BEHAVIORS[0]
+        onehot = {b: (1.0 if b == dominant else 0.0) for b in ATOMIC_BEHAVIORS}
+        alpha = 0.35  # keep observed activity signal, avoid all-or-nothing zeros
+        mixed = {b: (alpha * onehot[b]) + ((1.0 - alpha) * prior[b]) for b in ATOMIC_BEHAVIORS}
+        out = {b: float(total * mixed[b]) for b in ATOMIC_BEHAVIORS}
+    return out
+
 # --- [유틸리티: 필드 매핑 엔진] ---
 def load_mapping_config():
     import json
@@ -827,6 +903,8 @@ def build_final_reports(external_config=None):
             'analysis': run_full_analysis(df_br_raw),
             'prod_analysis': {pd: {
                 'analysis': run_full_analysis(df_br_raw[df_br_raw['품목']==pd]),
+                'monthly_actual': df_raw[(df_raw['지점'] == br) & (df_raw['품목'] == pd)].groupby('월')['처방금액'].sum().reindex(month_axis, fill_value=0).tolist(),
+                'monthly_target': target_monthly[(target_monthly['지점'] == br) & (target_monthly['품목'] == pd)].groupby('월')['목표금액'].sum().reindex(month_axis, fill_value=0).tolist(),
                 'achieve': calc_achieve(df_br[df_br['품목']==pd]['처방금액'].sum(), df_br[df_br['품목']==pd]['목표금액'].sum()),
                 'actual_sum': float(df_br[df_br['품목']==pd]['처방금액'].sum()),
                 'target_sum': float(df_br[df_br['품목']==pd]['목표금액'].sum()),
@@ -883,6 +961,53 @@ def build_final_reports(external_config=None):
             if weak_products:
                 c_action += f" (🚨 주의: {', '.join(weak_products)} 품목이 Dog 영역에 위치해 있습니다. 품목 성장이 저조하므로 타겟팅 전략 재수립이 필요합니다.)"
 
+            rep_prod_analysis = {}
+            rep_total_sales = float(pd.to_numeric(rep_raw['처방금액'], errors='coerce').fillna(0.0).sum()) if '처방금액' in rep_raw.columns else 0.0
+            rep_total_act = {b: float(pd.to_numeric(rep_raw[b], errors='coerce').fillna(0.0).sum()) if b in rep_raw.columns else 0.0 for b in ATOMIC_BEHAVIORS}
+            rep_activity_counts = summarize_activity_counts(rep_raw, real_shap)
+            for pd_name in hierarchy['products']:
+                df_rep_prod = df_rep[df_rep['품목'] == pd_name]
+                df_rep_raw_prod = rep_raw[rep_raw['품목'] == pd_name]
+                rep_prod_ana = run_full_analysis(df_rep_raw_prod)
+                if rep_prod_ana is not None and (rep_prod_ana or {}).get('importance'):
+                    rep_prod_shap = {k: float(v) for k, v in rep_prod_ana.get('importance', {}).items()}
+                else:
+                    weighted = {}
+                    prod_sales = float(pd.to_numeric(df_rep_prod['처방금액'], errors='coerce').fillna(0.0).sum()) if '처방금액' in df_rep_prod.columns else 0.0
+                    sales_share = (prod_sales / rep_total_sales) if rep_total_sales > 0 else 0.0
+                    for b in ATOMIC_BEHAVIORS:
+                        base_imp = float((real_shap or {}).get(b, 0.0))
+                        prod_act = float(pd.to_numeric(df_rep_raw_prod[b], errors='coerce').fillna(0.0).sum()) if b in df_rep_raw_prod.columns else 0.0
+                        total_act = float(rep_total_act.get(b, 0.0))
+                        act_share = (prod_act / total_act) if total_act > 0 else 0.0
+                        mix_share = 0.5 * act_share + 0.5 * sales_share
+                        weighted[b] = max(0.0, base_imp * mix_share)
+                    if sum(weighted.values()) > 0:
+                        rep_prod_shap = {b: float(weighted[b]) for b in ATOMIC_BEHAVIORS}
+                    else:
+                        rep_prod_shap = estimate_atomic_importance(df_rep_raw_prod)
+                if sum(abs(float(v or 0.0)) for v in rep_prod_shap.values()) <= 0:
+                    rep_prod_shap = {k: float(v) for k, v in (real_shap or {}).items()}
+                rep_prod_analysis[pd_name] = {
+                    'analysis': rep_prod_ana,
+                    'shap': rep_prod_shap,
+                    'activity_counts': summarize_activity_counts(df_rep_raw_prod, rep_prod_shap),
+                    'achieve': calc_achieve(df_rep_prod['처방금액'].sum(), df_rep_prod['목표금액'].sum()),
+                    'actual_sum': float(df_rep_prod['처방금액'].sum()),
+                    'target_sum': float(df_rep_prod['목표금액'].sum()),
+                    'gap_amount': float(calc_gap(df_rep_prod['처방금액'].sum(), df_rep_prod['목표금액'].sum())[0]),
+                    'gap_rate': float(calc_gap(df_rep_prod['처방금액'].sum(), df_rep_prod['목표금액'].sum())[1]),
+                    'avg': df_rep_prod[['HIR', 'RTR', 'BCR', 'PHR']].mean().to_dict(),
+                    'HIR': float(df_rep_prod['HIR'].mean()) if not df_rep_prod.empty else 0.0,
+                    'RTR': float(df_rep_prod['RTR'].mean()) if not df_rep_prod.empty else 0.0,
+                    'BCR': float(df_rep_prod['BCR'].mean()) if not df_rep_prod.empty else 0.0,
+                    'PHR': float(df_rep_prod['PHR'].mean()) if not df_rep_prod.empty else 0.0,
+                    'monthly_actual': df_raw[(df_raw['지점'] == br) & (df_raw['성명'] == rep) & (df_raw['품목'] == pd_name)]
+                        .groupby('월')['처방금액'].sum().reindex(month_axis, fill_value=0).tolist(),
+                    'monthly_target': target_monthly[(target_monthly['지점'] == br) & (target_monthly['성명'] == rep) & (target_monthly['품목'] == pd_name)]
+                        .groupby('월')['목표금액'].sum().reindex(month_axis, fill_value=0).tolist(),
+                }
+
             hierarchy['branches'][br]['members'].append({
                 '성명': rep,
                 'HIR': rep_hir, 'RTR': rep_rtr, 'BCR': rep_bcr, 'PHR': float(df_rep['PHR'].mean()),
@@ -898,6 +1023,8 @@ def build_final_reports(external_config=None):
                 'gini': float(calc_gini(df_rep['처방금액'])),
                 'avg_ms': avg_ms,
                 'prod_matrix': prod_matrix,
+                'activity_counts': rep_activity_counts,
+                'prod_analysis': rep_prod_analysis,
                 'monthly_actual': df_raw[(df_raw['지점']==br) & (df_raw['성명']==rep)].groupby('월')['처방금액'].sum().reindex(month_axis, fill_value=0).tolist(),
                 'monthly_target': target_monthly[(target_monthly['지점']==br) & (target_monthly['성명']==rep)].groupby('월')['목표금액'].sum().reindex(month_axis, fill_value=0).tolist()
             })

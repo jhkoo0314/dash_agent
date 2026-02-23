@@ -204,6 +204,7 @@
                     <div class='card'>
                         <h4 class='mb-2'>개인 8대 행동 기여도 (Tornado Chart)</h4>
                         <div class='chart-container'><canvas id='chart_r_tornado'></canvas></div>
+                        <div id='activity_breakdown' class='mt-4 grid grid-cols-4 gap-2 text-xs'></div>
                     </div>
                 </div>
             </div>
@@ -691,12 +692,38 @@
             } else {
                 document.getElementById('groupView').classList.add('hidden');
                 document.getElementById('indivView').classList.remove('hidden');
-                const mData = db.branches[br].members.find(x => getMemberName(x) === rep);
+                const branchData = db.branches[br];
+                const mData = branchData.members.find(x => getMemberName(x) === rep);
                 if (mData) {
-                    const pSeries = buildPeriodSeries(mData.monthly_actual, mData.monthly_target);
-                    const branchSeries = buildPeriodSeries(db.branches[br].monthly_actual, db.branches[br].monthly_target);
-                    renderIndividual(mData, db.branches[br].avg, pSeries, dataIdx);
-                    updateMetrics('individual', { member: mData, branchAvg: db.branches[br].avg, branchSeries }, pSeries, dataIdx);
+                    let memberView = mData;
+                    let branchAvgView = branchData.avg;
+                    let branchSeries = buildPeriodSeries(branchData.monthly_actual, branchData.monthly_target);
+                    if (prod !== 'ALL') {
+                        const mProd = (mData.prod_analysis || {})[prod];
+                        const bProd = (branchData.prod_analysis || {})[prod];
+                        const pmOne = (mData.prod_matrix || []).find(x => (x.name || '') === prod);
+                        if (mProd) {
+                            memberView = {
+                                ...mData,
+                                ...mProd,
+                                shap: mProd.shap || ((mProd.analysis || {}).importance) || mData.shap,
+                                coach_scenario: mData.coach_scenario,
+                                coach_action: mData.coach_action,
+                                '지점순위': mData['지점순위'],
+                                prod_matrix: pmOne ? [pmOne] : (mData.prod_matrix || []),
+                                avg_ms: pmOne ? Number(pmOne.ms || 0) : mData.avg_ms,
+                                gini: mData.gini,
+                                efficiency: mData.efficiency
+                            };
+                        }
+                        if (bProd) {
+                            branchAvgView = bProd.avg || branchAvgView;
+                            branchSeries = buildPeriodSeries(bProd.monthly_actual || [], bProd.monthly_target || []);
+                        }
+                    }
+                    const pSeries = buildPeriodSeries(memberView.monthly_actual, memberView.monthly_target);
+                    renderIndividual(memberView, branchAvgView, pSeries, dataIdx);
+                    updateMetrics('individual', { member: memberView, branchAvg: branchAvgView, branchSeries }, pSeries, dataIdx);
                 }
             }
         }
@@ -710,9 +737,12 @@
             const gap = curActual - curTarget;
             const periodPrefix = periodMode === 'monthly' ? '당월' : '해당 분기';
             const groupPerf = periodPerf(pSeries, safeIdx);
+            const peerData = (prod && prod !== 'ALL' && (db.total_prod_analysis || {})[prod])
+                ? db.total_prod_analysis[prod]
+                : db.total;
             const totalSeries = buildPeriodSeries(
-                db.total?.monthly_actual || [],
-                db.total?.monthly_target || []
+                peerData?.monthly_actual || [],
+                peerData?.monthly_target || []
             );
             const totalPerf = periodPerf(totalSeries, safeIdx);
             const perfScale = clamp(groupPerf.scale, 0.7, 1.3);
@@ -815,7 +845,8 @@
 
             const rL = ['HIR', 'RTR', 'BCR', 'PHR', 'PI', 'FGR'];
             const mappedData = rL.map(k => clamp(Number(data.avg[k] || 70) * perfScale, 0, 100));
-            const mappedTotal = rL.map(k => clamp(Number(db.total_avg[k] || 70) * peerScale, 0, 100));
+            const peerAvg = peerData?.avg || db.total_avg || {};
+            const mappedTotal = rL.map(k => clamp(Number(peerAvg[k] || 70) * peerScale, 0, 100));
             
             safeNewChart('gRadar', 'chart_g_radar', {
                 type: 'radar',
@@ -893,6 +924,31 @@
             });
         }
 
+        function renderActivityBreakdown(activityCounts) {
+            const el = document.getElementById('activity_breakdown');
+            if (!el) return;
+            const rows = Object.entries(activityCounts || {})
+                .map(([k, v]) => ({ k, v: Number(v || 0) }))
+                .sort((a, b) => b.v - a.v);
+            if (!rows.length) {
+                el.innerHTML = "<div class='col-span-4 text-slate-400 text-xs font-bold'>활동 데이터 없음</div>";
+                return;
+            }
+            const maxV = Math.max(...rows.map(r => r.v), 1);
+            el.innerHTML = rows.map(r => {
+                const w = Math.max(2, (r.v / maxV) * 100);
+                return `
+                    <div class='rounded-lg border border-slate-200 p-2 bg-slate-50'>
+                        <div class='flex justify-between text-[11px] font-bold text-slate-700'>
+                            <span>${r.k}</span><span>${Math.round(r.v).toLocaleString()}</span>
+                        </div>
+                        <div class='mt-1 h-1.5 bg-slate-200 rounded'>
+                            <div class='h-1.5 rounded bg-indigo-500' style='width:${w}%'></div>
+                        </div>
+                    </div>`;
+            }).join('');
+        }
+
         function renderIndividual(m, brAvg, pSeries, currentIdx) {
             // 월/분기 선택 인덱스까지 누적값으로 담당자 성과를 동기화
             const safeIdx = Math.max(0, Math.min((pSeries?.actual?.length || 1) - 1, Number(currentIdx || 0)));
@@ -940,6 +996,16 @@
                     'FaceToFace': 0.25, 'Contact': -0.25, 'Access': -0.10, 'Feedback': 0.05
                 };
             }
+            const actCounts = m.activity_counts || {};
+            const actTotal = Object.values(actCounts).reduce((acc, v) => acc + Number(v || 0), 0);
+            if (actTotal > 0) {
+                const scaled = {};
+                Object.keys(shapDict).forEach(k => {
+                    const ratio = Number(actCounts[k] || 0) / actTotal;
+                    scaled[k] = Number(shapDict[k] || 0) * (0.6 + ratio * 8);
+                });
+                shapDict = scaled;
+            }
             const sortedEntries = Object.entries(shapDict).sort((a, b) => a[1] - b[1]);
             const labels = sortedEntries.map(e => e[0]);
             const vals = sortedEntries.map(e => e[1]);
@@ -966,6 +1032,7 @@
                     }
                 } 
             });
+            renderActivityBreakdown(m.activity_counts || {});
             const pmData = m.prod_matrix && m.prod_matrix.length ? m.prod_matrix : [{name:'N/A', ms:0, growth:0}];
             const avgMs = m.avg_ms || (pmData.reduce((acc, curr) => acc + (curr.ms || 0), 0) / (pmData.length || 1));
             
