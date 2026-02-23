@@ -74,7 +74,18 @@
             <div id='card_metric_6' class='card p-5 border-t-4 border-slate-400 mb-0 transition-colors'><p id='l_metric_6' class='metric-label'>데이터 정합성</p><h3 id='v_metric_6' class='text-xl font-black text-slate-500 mt-2'>점검중</h3></div>
         </div>
 
-        <!-- 데이터 정합성 경고 섹션 (레코드 누락) -->
+        <!-- 데이터 정합성 요약/상세 -->
+        <div id='integritySimple' class='hidden card p-4 border-l-4 border-amber-500 bg-amber-50 mb-3'>
+            <div class='flex items-center justify-between gap-3'>
+                <div class='flex items-center gap-2'>
+                    <i id='integrityIcon' class='fas fa-exclamation-triangle text-amber-500'></i>
+                    <p id='integritySummaryText' class='text-sm font-black text-amber-800'>데이터 정합성 점검이 필요합니다.</p>
+                </div>
+                <button id='integrityToggleBtn' class='px-3 py-1 rounded-lg text-xs font-black bg-white border border-slate-200 text-slate-700'>상세 보기</button>
+            </div>
+        </div>
+
+        <div id='integrityDetailPanel' class='hidden'>
         <div id='qualityAlert' class='hidden card border-l-8 border-rose-500 bg-rose-50'>
             <div class='flex items-center gap-3 mb-3'>
                 <i class='fas fa-exclamation-triangle text-rose-600 text-2xl'></i>
@@ -96,6 +107,7 @@
             <div class='grid grid-cols-2 md:grid-cols-4 gap-4' id='mappingStatus'>
                 <!-- JS에서 생성 -->
             </div>
+        </div>
         </div>
 
         <!-- 지점 뷰 3-Layer View -->
@@ -314,10 +326,18 @@
         // Register Datalabels Plugin
         Chart.register(ChartDataLabels);
         Chart.defaults.plugins.datalabels.display = false;
+        let hasIntegrityDetail = false;
+        let hasIntegrityIssue = false;
+        let hasMissingData = false;
+        let hasHealthData = false;
+
         if (db.data_health) {
+            hasIntegrityDetail = true;
+            hasHealthData = true;
             const hScore = document.getElementById('healthScore');
             hScore.innerText = `정합성: ${db.data_health.integrity_score}%`;
             if(db.data_health.integrity_score < 80) hScore.className = hScore.className.replace('bg-blue-500', 'bg-amber-500');
+            if ((db.data_health.integrity_score || 0) < 95 || (db.data_health.missing_fields || []).length > 0) hasIntegrityIssue = true;
             
             const mappingList = document.getElementById('mappingStatus');
             const allFields = {...db.data_health.mapped_fields};
@@ -339,7 +359,9 @@
 
         // 누락 데이터 초기 리포트(레코드 단위)
         if (db.missing_data && db.missing_data.length > 0) {
-            document.getElementById('qualityAlert').classList.remove('hidden');
+            hasIntegrityDetail = true;
+            hasIntegrityIssue = true;
+            hasMissingData = true;
             const list = document.getElementById('missingList');
             db.missing_data.slice(0, 12).forEach(item => {
                 const div = document.createElement('div');
@@ -356,6 +378,41 @@
                 more.innerText = `외 ${db.missing_data.length - 12}건 더 있음...`;
                 list.appendChild(more);
             }
+        }
+
+        // 데이터 정합성 심플 경고 + 클릭 상세 토글
+        if (hasIntegrityDetail) {
+            const simple = document.getElementById('integritySimple');
+            const summaryText = document.getElementById('integritySummaryText');
+            const icon = document.getElementById('integrityIcon');
+            const toggleBtn = document.getElementById('integrityToggleBtn');
+            const detailPanel = document.getElementById('integrityDetailPanel');
+            const qualityAlert = document.getElementById('qualityAlert');
+            const healthSection = document.getElementById('healthSection');
+            simple.classList.remove('hidden');
+
+            if (hasIntegrityIssue) {
+                summaryText.innerText = '데이터 정합성 경고가 있습니다. 상세를 확인하세요.';
+                simple.className = 'card p-4 border-l-4 border-rose-500 bg-rose-50 mb-3';
+                icon.className = 'fas fa-exclamation-triangle text-rose-500';
+            } else {
+                summaryText.innerText = '데이터 정합성 상태가 양호합니다.';
+                simple.className = 'card p-4 border-l-4 border-emerald-500 bg-emerald-50 mb-3';
+                icon.className = 'fas fa-check-circle text-emerald-500';
+            }
+
+            const setDetailVisible = (visible) => {
+                detailPanel.classList.toggle('hidden', !visible);
+                if (hasMissingData) qualityAlert.classList.toggle('hidden', !visible);
+                if (hasHealthData) healthSection.classList.toggle('hidden', !visible);
+                toggleBtn.innerText = visible ? '상세 닫기' : '상세 보기';
+            };
+
+            setDetailVisible(false);
+            toggleBtn.onclick = () => {
+                const isOpen = !detailPanel.classList.contains('hidden');
+                setDetailVisible(!isOpen);
+            };
         }
 
         if(bSel.options.length <= 1) {
