@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Spatial Map Template</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; font-family: Arial, sans-serif; }
+    #app { width: 100%; height: 100%; position: relative; background: #f3f6fb; }
+    #map { width: 100%; height: 100%; }
+    .panel {
+      position: absolute;
+      z-index: 1000;
+      background: rgba(255, 255, 255, 0.96);
+      border: 1px solid #dbe4f0;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+      padding: 10px 12px;
+      font-size: 12px;
+      color: #1f2937;
+    }
+    #status-box { top: 12px; left: 12px; min-width: 220px; }
+    #control-box { top: 12px; right: 12px; min-width: 240px; }
+    .title { font-weight: 700; margin-bottom: 6px; color: #1f3b69; }
+    .field { margin-top: 6px; }
+    .field label { display: block; margin-bottom: 4px; font-weight: 600; color: #334155; }
+    .field select, .field button {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-size: 12px;
+      background: #fff;
+    }
+    .field button {
+      margin-top: 8px;
+      background: #1d4ed8;
+      border-color: #1d4ed8;
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+    }
+  </style>
+<script>
+window.__INITIAL_MODE__ = "routing";
+window.__INITIAL_MARKERS__ = /*INITIAL_MARKERS_PLACEHOLDER*/ [];
+window.__INITIAL_ROUTES__ = /*INITIAL_ROUTES_PLACEHOLDER*/ [];
+</script>
+</head>
+<body>
+  <div id="app">
+    <div id="map"></div>
+    <div id="status-box" class="panel">
+      <div class="title">Spatial Map Engine</div>
+      <div id="status-text">초기화 중...</div>
+    </div>
+    <div id="control-box" class="panel">
+      <div class="title">담당자 동선 추적</div>
+      <div class="field">
+        <label for="rep-select">담당자</label>
+        <select id="rep-select"></select>
+      </div>
+      <div class="field">
+        <label for="month-select">월</label>
+        <select id="month-select"></select>
+      </div>
+      <div class="field">
+        <label for="date-select">날짜</label>
+        <select id="date-select"></select>
+      </div>
+      <div class="field">
+        <button id="apply-route">동선 보기</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    (function () {
+      function setStatus(message) {
+        var el = document.getElementById("status-text");
+        if (el) el.textContent = message;
+      }
+
+      function escapeHtml(text) {
+        return String(text || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
+      function sendToStreamlit(type, data) {
+        var payload = Object.assign({ isStreamlitMessage: true, type: type }, data || {});
+        window.parent.postMessage(payload, "*");
+      }
+
+      if (!window.L) {
+        setStatus("Leaflet 로드 실패");
+        return;
+      }
+
+      var map = L.map("map", { center: [36.5, 127.8], zoom: 7, zoomControl: true });
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "&copy; OpenStreetMap contributors"
+      }).addTo(map);
+
+      var markerLayer = L.layerGroup().addTo(map);
+      var routeLayer = null;
+      var currentPayload = { markers: [], routes: [], mode: "hospital" };
+
+      function toLatLng(point) {
+        if (!point) return null;
+        var lat = Number(point.lat);
+        var lon = Number(point.lon);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+        return [lat, lon];
+      }
+
+      function renderMarkers(markers) {
+        markerLayer.clearLayers();
+        var bounds = [];
+        var count = 0;
+        (markers || []).forEach(function (m) {
+          var ll = toLatLng(m);
+          if (!ll) return;
+          var popup = "<b>" + escapeHtml(m.hospital) + "</b>";
+          if (m.rep) popup += "<br>담당자: " + escapeHtml(m.rep);
+          if (m.date) popup += "<br>날짜: " + escapeHtml(m.date);
+          if (m.target != null) popup += "<br>목표: " + Number(m.target).toLocaleString() + " 원";
+          if (m.sales != null) popup += "<br>실적: " + Number(m.sales).toLocaleString() + " 원";
+          if (m.insight) popup += "<br>인사이트: " + escapeHtml(m.insight);
+
+          var marker = L.marker(ll).addTo(markerLayer);
+          marker.bindTooltip(escapeHtml(m.hospital || "병원"), { sticky: true });
+          marker.bindPopup(popup);
+          marker.on("click", function () {
+            sendToStreamlit("streamlit:setComponentValue", { value: String(m.hospital || "") });
+          });
+          bounds.push(ll);
+          count += 1;
+        });
+        if (bounds.length > 0) {
+          map.fitBounds(bounds, { padding: [20, 20] });
+        }
+        return count;
+      }
+
+      function clearRoute() {
+        if (routeLayer) {
+          map.removeLayer(routeLayer);
+          routeLayer = null;
+        }
+      }
+
+      function renderRoute(routeCoords) {
+        clearRoute();
+        var latlngs = (routeCoords || []).map(toLatLng).filter(Boolean);
+        if (latlngs.length >= 2) {
+          routeLayer = L.polyline(latlngs, { color: "#dc2626", weight: 3, opacity: 0.9 }).addTo(map);
+          map.fitBounds(routeLayer.getBounds(), { padding: [24, 24] });
+        } else if (latlngs.length === 1) {
+          map.setView(latlngs[0], 12);
+        }
+        return latlngs.length;
+      }
+
+      function haversineKm(lat1, lon1, lat2, lon2) {
+        var toRad = function (d) { return d * Math.PI / 180; };
+        var dLat = toRad(lat2 - lat1);
+        var dLon = toRad(lon2 - lon1);
+        var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+          Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return 6371.0 * c;
+      }
+
+      function calcRouteDistanceKm(routeCoords) {
+        var points = (routeCoords || []).map(toLatLng).filter(Boolean);
+        if (points.length < 2) return 0;
+        var total = 0;
+        for (var i = 1; i < points.length; i += 1) {
+          total += haversineKm(points[i - 1][0], points[i - 1][1], points[i][0], points[i][1]);
+        }
+        return total;
+      }
+
+      function applyMarkerFilter(rep, month, date) {
+        var markers = currentPayload.markers || [];
+        var filtered = (markers || []).filter(function (m) {
+          var mm = m.month || String(m.date || "").slice(0, 7);
+          var okRep = !rep || m.rep === rep;
+          var okMonth = !month || mm === month;
+          var okDate = !date || m.date === date;
+          return okRep && okMonth && okDate;
+        });
+        return renderMarkers(filtered);
+      }
+
+      function buildRepDateOptions(routes, markers) {
+        var repSelect = document.getElementById("rep-select");
+        var monthSelect = document.getElementById("month-select");
+        var dateSelect = document.getElementById("date-select");
+        if (!repSelect || !monthSelect || !dateSelect) return;
+
+        repSelect.innerHTML = "";
+        monthSelect.innerHTML = "";
+        dateSelect.innerHTML = "";
+
+        var repFromRoutes = (routes || []).map(function (r) { return r.rep; }).filter(Boolean);
+        var repFromMarkers = (markers || []).map(function (m) { return m.rep; }).filter(Boolean);
+        var reps = Array.from(new Set(repFromRoutes.concat(repFromMarkers))).sort();
+        if (reps.length === 0) {
+          repSelect.innerHTML = "<option value=''>데이터 없음</option>";
+          monthSelect.innerHTML = "<option value=''>월 없음</option>";
+          dateSelect.innerHTML = "<option value=''>데이터 없음</option>";
+          return;
+        }
+
+        reps.forEach(function (rep) {
+          var opt = document.createElement("option");
+          opt.value = rep;
+          opt.textContent = rep;
+          repSelect.appendChild(opt);
+        });
+
+        function updateMonths() {
+          var rep = repSelect.value;
+          var routeMonths = (routes || [])
+            .filter(function (r) { return r.rep === rep; })
+            .map(function (r) { return r.month || String(r.date || "").slice(0, 7); })
+            .filter(Boolean);
+          var markerMonths = (markers || [])
+            .filter(function (m) { return m.rep === rep; })
+            .map(function (m) { return m.month || String(m.date || "").slice(0, 7); })
+            .filter(Boolean);
+          var months = Array.from(new Set(routeMonths.concat(markerMonths))).sort();
+          monthSelect.innerHTML = "";
+          if (months.length === 0) {
+            monthSelect.innerHTML = "<option value=''>월 없음</option>";
+            dateSelect.innerHTML = "<option value=''>날짜 없음</option>";
+            return;
+          }
+          months.forEach(function (m) {
+            var opt = document.createElement("option");
+            opt.value = m;
+            opt.textContent = m;
+            monthSelect.appendChild(opt);
+          });
+        }
+
+        function updateDates() {
+          var rep = repSelect.value;
+          var month = monthSelect.value;
+          var routeDates = (routes || [])
+            .filter(function (r) {
+              var rm = r.month || String(r.date || "").slice(0, 7);
+              return r.rep === rep && rm === month;
+            })
+            .map(function (r) { return r.date; })
+            .filter(Boolean);
+          var markerDates = (markers || [])
+            .filter(function (m) {
+              var mm = m.month || String(m.date || "").slice(0, 7);
+              return m.rep === rep && mm === month;
+            })
+            .map(function (m) { return m.date; })
+            .filter(Boolean);
+          var dates = Array.from(new Set(routeDates.concat(markerDates))).sort();
+          dateSelect.innerHTML = "";
+          if (dates.length === 0) {
+            dateSelect.innerHTML = "<option value=''>날짜 없음</option>";
+            return;
+          }
+          dates.forEach(function (d) {
+            var opt = document.createElement("option");
+            opt.value = d;
+            opt.textContent = d;
+            dateSelect.appendChild(opt);
+          });
+        }
+
+        repSelect.onchange = function () {
+          updateMonths();
+          updateDates();
+          var rep = repSelect.value;
+          var markerCount = applyMarkerFilter(rep, monthSelect.value, dateSelect.value);
+          clearRoute();
+          setStatus("mode=routing | rep=" + rep + " | month=" + monthSelect.value + " | markers=" + markerCount + " | route_points=0 | total_km=0.00");
+        };
+        monthSelect.onchange = function () {
+          updateDates();
+          applyRouteFromControls();
+        };
+        dateSelect.onchange = function () {
+          applyRouteFromControls();
+        };
+        updateMonths();
+        updateDates();
+      }
+
+      function findRoute(rep, month, date) {
+        return (currentPayload.routes || []).find(function (r) {
+          var routeMonth = r.month || String(r.date || "").slice(0, 7);
+          return r.rep === rep && routeMonth === month && r.date === date;
+        });
+      }
+
+      function buildRouteFromMarkers(rep, month, date) {
+        var rows = (currentPayload.markers || [])
+          .map(function (m, idx) {
+            return {
+              rep: m.rep,
+              month: m.month || String(m.date || "").slice(0, 7),
+              date: m.date,
+              hospital: m.hospital,
+              lat: m.lat,
+              lon: m.lon,
+              order: Number.isFinite(Number(m.seq)) ? Number(m.seq)
+                : Number.isFinite(Number(m.Seq)) ? Number(m.Seq)
+                : Number.isFinite(Number(m.order)) ? Number(m.order)
+                : Number.isFinite(Number(m.idx)) ? Number(m.idx)
+                : idx,
+              idx: idx
+            };
+          })
+          .filter(function (m) { return m.rep === rep && m.month === month && m.date === date; })
+          .filter(function (m) { return Number.isFinite(Number(m.lat)) && Number.isFinite(Number(m.lon)); })
+          .sort(function (a, b) {
+            if (a.order !== b.order) return a.order - b.order;
+            return a.idx - b.idx;
+          });
+
+        // 동일 병원이 연속 반복되는 경우 한 번만 반영(노이즈 완화)
+        var dedup = [];
+        for (var i = 0; i < rows.length; i += 1) {
+          if (i === 0 || String(rows[i].hospital) !== String(rows[i - 1].hospital)) {
+            dedup.push(rows[i]);
+          }
+        }
+        return dedup;
+      }
+
+      function countVisitHospitals(routeCoords) {
+        var uniq = new Set((routeCoords || []).map(function (p) { return String(p.hospital || "").trim(); }).filter(Boolean));
+        return uniq.size;
+      }
+
+      function applyRouteFromControls() {
+        var repSelect = document.getElementById("rep-select");
+        var monthSelect = document.getElementById("month-select");
+        var dateSelect = document.getElementById("date-select");
+        if (!repSelect || !monthSelect || !dateSelect) return;
+        var rep = repSelect.value;
+        var month = monthSelect.value;
+        var date = dateSelect.value;
+        var markerCount = applyMarkerFilter(rep, month, date);
+        var route = findRoute(rep, month, date);
+        var points = route && Array.isArray(route.coords) ? route.coords : buildRouteFromMarkers(rep, month, date);
+        var routeCount = renderRoute(points);
+        var totalKm = calcRouteDistanceKm(points);
+        var visitHospitals = countVisitHospitals(points);
+        setStatus(
+          "mode=routing | rep=" + rep +
+          " | month=" + month +
+          " | date=" + date +
+          " | markers=" + markerCount +
+          " | visits=" + visitHospitals +
+          " | route_points=" + routeCount +
+          " | total_km=" + totalKm.toFixed(2)
+        );
+      }
+
+      function renderMap(payload) {
+        currentPayload = payload || { markers: [], routes: [], mode: "hospital" };
+        var mode = currentPayload.mode || "hospital";
+        var markerCount = 0;
+        buildRepDateOptions(currentPayload.routes || [], currentPayload.markers || []);
+
+        clearRoute();
+        if (mode === "routing") {
+          applyRouteFromControls();
+        } else {
+          markerCount = renderMarkers(currentPayload.markers || []);
+          setStatus("mode=" + mode + " | markers=" + markerCount + " | route_points=0 | total_km=0.00");
+        }
+      }
+
+      document.getElementById("apply-route").addEventListener("click", applyRouteFromControls);
+
+      window.renderMap = renderMap;
+      window.__mapInstance = map;
+
+      sendToStreamlit("streamlit:componentReady", { apiVersion: 1 });
+      sendToStreamlit("streamlit:setFrameHeight", { height: 760 });
+
+      var hasInitial = Array.isArray(window.__INITIAL_MARKERS__) || Array.isArray(window.__INITIAL_ROUTES__);
+      if (hasInitial) {
+        renderMap({
+          mode: window.__INITIAL_MODE__ || "routing",
+          markers: window.__INITIAL_MARKERS__ || [],
+          routes: window.__INITIAL_ROUTES__ || []
+        });
+      } else {
+        setStatus("대기 중... renderMap(payload) 호출 필요");
+      }
+    })();
+  </script>
+</body>
+</html>
