@@ -66,6 +66,14 @@ python scripts/report_builder_v12.py
 - Some existing Korean text may appear garbled in terminals with mismatched encoding.
 - Prefer UTF-8 when editing files.
 - Do not rename Korean key fields blindly; verify all usages first with `rg`.
+- Encoding rule applies to **all files** (`.py`, `.md`, `.json`, `.html`, `.ipynb`, etc.), not only notebooks.
+- Never commit/write code or comments containing garbled placeholders such as `??` caused by encoding mismatch.
+- Before running any Python-based validation that prints Korean text, set UTF-8 I/O: `$env:PYTHONIOENCODING='utf-8'`.
+- If console output is garbled, do not patch from that output; inspect/edit UTF-8 source directly and re-check.
+- For `.ipynb` / `.ipynb_checkpoints` edits, never write Korean comments/strings via escaped replacement flows that can produce `??`.
+- When executing notebook code in terminal, set UTF-8 I/O first (`$env:PYTHONIOENCODING='utf-8'`) before validation.
+- After any notebook edit, re-open the edited cell source and verify Korean literals are intact (no `??`), then verify output columns by exact Korean names.
+- If Korean text appears garbled in console output, do not trust that output for patching; inspect and patch raw file content in UTF-8 and re-validate.
 
 ## Quick Validation Checklist
 - `streamlit run scripts/sfe_sandbox.py` starts successfully
