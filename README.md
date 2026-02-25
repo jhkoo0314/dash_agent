@@ -1,16 +1,19 @@
 # SFE Master Sandbox (V13.1)
 
-Sales/Target/CRM 데이터를 통합해 다음 결과물을 만드는 프로젝트입니다.
+Sales / Target / CRM 데이터를 통합해 아래 결과물을 생성합니다.
 
-- Streamlit 기반 인터랙티브 SFE 분석 대시보드
-- 최종 HTML 전략 리포트
+- Streamlit 기반 SFE 분석 샌드박스
+- 최종 전략 리포트 HTML
+- 전국병원 지도(Spatial Preview) HTML
 
 ## 1. 프로젝트 구성
 
-- 대시보드 진입점: `scripts/sfe_sandbox.py`
+- 대시보드 엔트리: `scripts/sfe_sandbox.py`
 - 리포트 엔진: `scripts/report_builder_v12.py`
-- 리포트 템플릿: `templates/report_template.html`
-- 지도 컴포넌트: `scripts/map_component/index.html`, `hospital_map.html`
+- 지도 데이터 빌더: `scripts/map_data_builder.py`
+- 지도 탭 UI: `scripts/hospital_map_tab.py`
+- 전략 리포트 템플릿: `templates/report_template.html`
+- 지도 템플릿(기준 템플릿): `templates/spatial_preview_template.html`
 - 컬럼 매핑 설정: `config/mapping.json`
 
 ## 2. 기술 스택
@@ -23,7 +26,7 @@ Sales/Target/CRM 데이터를 통합해 다음 결과물을 만드는 프로젝�
 - jinja2
 - openpyxl
 
-의존성 설치:
+설치:
 
 ```bash
 pip install -r requirements.txt
@@ -31,72 +34,89 @@ pip install -r requirements.txt
 
 ## 3. 디렉터리 가이드
 
-- `data/`: 원천 데이터
-- `data/sales/`: 실적 파일
-- `data/targets/`: 목표 파일
-- `data/crm/`: CRM 활동 파일
-- `scripts/`: 대시보드/리포트 로직
+- `data/`
+  - `data/sales/`: 실적 데이터
+  - `data/targets/`: 목표 데이터
+  - `data/crm/`: 활동 데이터
+  - `data/logic/`: 좌표 조인 데이터(`hospital_assignment_data_v2.xlsx`)
+- `scripts/`: 샌드박스/리포트/지도 빌드 로직
 - `templates/`: HTML 템플릿
 - `config/`: 매핑/설정 파일
-- `docs/`: 설계/메모 문서
-- `output/`: 생성 결과물
-- `output/processed_data/standardized_sales_*.csv`
-- `output/Strategic_Full_Dashboard_*.html`
+- `docs/`: 기획/구현 문서
+- `output/`: 결과물
+  - `output/processed_data/standardized_sales_*.csv`
+  - `output/processed_data/map_master_*.csv`
+  - `output/Strategic_Full_Dashboard_*.html`
+  - `output/Spatial_Preview_*.html`
 
 ## 4. 실행 방법
 
-### 4.1 대시보드 실행
+### 4.1 샌드박스 실행
 
 ```bash
 streamlit run scripts/sfe_sandbox.py
 ```
 
-대시보드 주요 흐름:
-
-1. `data/sales`, `data/targets`, `data/crm` 파일 자동 탐색 + 수동 업로드
-2. 컬럼 매핑 확인/수정 (`config/mapping.json` 기반 별칭 자동 추천)
-3. 6개 핵심 지표 로직 적용 후 표준화 파일 저장
-4. 바로 최종 HTML 리포트 생성 버튼으로 연계
-5. 병원 지도(Map Deep Dive)에서 클릭 기반 상세 분석 확인
-
-### 4.2 최종 리포트 생성 (단독 실행)
+### 4.2 전략 리포트 단독 생성
 
 ```bash
 python scripts/report_builder_v12.py
 ```
 
-리포트 엔진 동작:
+## 5. 지도 생성 흐름 (샌드박스 탭)
 
-- 우선순위 1: `output/processed_data/standardized_sales_*.csv`
-- 우선순위 2: `output/processed_data/standardized_sales.csv`
-- 우선순위 3: `data/sales/` 원본 파일 fallback
-- 목표 데이터는 `data/targets/`에서 자동 탐색
-- 표준화 실적 파일을 사용하면 CRM 병합은 스킵
-- 결과는 `output/Strategic_Full_Dashboard_YYMMDD(.n).html` 형태로 저장
+전국병원 지도 탭은 2단계로 동작합니다.
 
-## 5. 산출물 규칙
+1. **1단계 맵데이터 빌더 실행**
+   - `map_data_builder.build_map_master_csv()` 호출
+   - 4개 소스(활동/목표/실적/좌표)에서 필수 컬럼만 병합
+   - 결과 CSV 생성:
+     - `output/processed_data/map_master_YYMMDD(.n).csv`
+   - 생성된 CSV 미리보기 및 다운로드 가능
 
-- 표준화 CSV: `output/processed_data/standardized_sales_YYMMDD(.n).csv`
-- 최종 HTML: `output/Strategic_Full_Dashboard_YYMMDD(.n).html`
-- 동일 날짜 파일이 있으면 `(1)`, `(2)` 식으로 충돌 회피
+2. **2단계 최종 HTML 생성**
+   - `map_data_builder.build_spatial_preview_html_from_csv()` 호출
+   - 기준 템플릿(`templates/spatial_preview_template.html`)에
+     `__INITIAL_MARKERS__`, `__INITIAL_ROUTES__`를 주입
+   - 결과 HTML 생성:
+     - `output/Spatial_Preview_YYMMDD_HHMMSS(.n).html`
 
-## 6. 컬럼 매핑/호환성
+핵심:
+- 지도는 템플릿 기반 주입 방식으로 생성됩니다.
+- 데이터가 바뀌면 템플릿은 유지하고 payload만 교체합니다.
 
-- 매핑 사전 파일: `config/mapping.json`
-- 대시보드에서 사용자가 수정한 매핑을 학습(별칭 추가) 가능
-- 리포트 엔진은 동일 매핑 사전을 재사용해 자동 정규화
-- 키 컬럼 예시: `지점`, `성명`, `병원명`, `품목`, `처방금액`, `목표금액`, `월`, `activities`, `segment`, `날짜`
+## 6. 지도용 병합 컬럼(요약)
 
-## 7. 빠른 검증 체크리스트
+- CRM: `활동일자`, `담당자명`, `요양기관명`
+- TARGET: `요양기관명`, `목표월`, `목표금액`
+- SALES: `요양기관명`, `목표월`, `실적금액`
+- COORD: `요양기관명`, `경도`, `위도`
+
+조인/정렬 규칙:
+- 조인 키: `요양기관명` 정규화 키 + `활동월(활동일자에서 파생)`/`목표월`
+- 이동 순서: `활동일자` + `source_row_no`(입력순 보존)
+
+## 7. 파일명 규칙
+
+- 표준화 매출 CSV:
+  - `output/processed_data/standardized_sales_YYMMDD(.n).csv`
+- 지도 마스터 CSV:
+  - `output/processed_data/map_master_YYMMDD(.n).csv`
+- 전략 리포트 HTML:
+  - `output/Strategic_Full_Dashboard_YYMMDD(.n).html`
+- 지도 미리보기 HTML:
+  - `output/Spatial_Preview_YYMMDD_HHMMSS(.n).html`
+
+## 8. 빠른 검증 체크리스트
 
 - `streamlit run scripts/sfe_sandbox.py` 실행 성공
-- 대시보드에서 표준화 CSV 저장 성공
-- `python scripts/report_builder_v12.py` 실행 성공
-- `output/`에 최신 HTML 리포트 생성 확인
-- `config/mapping.json` 기반 자동 매핑 동작 확인
+- STEP 1(마스터 로직) 결과 CSV 생성 성공
+- 지도 탭 1단계 `map_master_*.csv` 생성 및 미리보기 성공
+- 지도 탭 2단계 `Spatial_Preview_*.html` 생성 성공
+- `python scripts/report_builder_v12.py` 생성 성공
 
-## 8. 주의 사항
+## 9. 주의사항
 
-- `data/`, `output/` 내 사용자 데이터는 삭제/초기화하지 마세요.
-- 매핑 로직 수정 시 `config/mapping.json`의 기존 키 호환성을 유지하세요.
-- 콘솔에서 한글이 깨질 수 있으나, 파일 편집/저장은 UTF-8 기준으로 유지하세요.
+- `data/`, `output/` 사용자 데이터는 삭제/초기화하지 않습니다.
+- `config/mapping.json`은 기존 호환성을 유지합니다.
+- 한글 포함 파일 편집/검증은 UTF-8 기준으로 처리합니다.
