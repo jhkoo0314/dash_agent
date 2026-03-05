@@ -41,6 +41,47 @@ template: templates/monthly_report.html
 output_name_rule: Strategic_Full_Dashboard_{date}
 ```
 
+## Map 시나리오 예시
+```yaml
+scenario_name: map_spatial_preview
+domains: [crm, sales, targets, logic]
+input_sources:
+  crm: data/crm/*.{csv,xlsx}
+  sales: data/sales/*.{csv,xlsx}
+  targets: data/targets/*.{csv,xlsx}
+  logic: data/logic/*.{csv,xlsx}
+
+grain:
+  map_master: [hospital_id, metric_month, activity_date, rep_id]
+  route: [rep_id, metric_month, activity_date]
+
+join_keys:
+  crm_sales_targets: [hospital_id, metric_month]
+  with_coords: [hospital_id]
+
+filters:
+  metric_month: current_month
+  require_valid_coords: true
+
+metrics:
+  - visits
+  - total_km
+  - sales_amount
+  - target_amount
+
+template: templates/spatial_preview_template.html
+output_name_rule:
+  map_master_csv: map_master_{date}
+  spatial_preview_html: Spatial_Preview_{date}_{time}
+
+quality_gates:
+  activity_date_parse_fail_rate_max: 0.05
+  coord_missing_rate_max: 0.10
+  coord_out_of_range_rate_max: 0.01
+  join_row_growth_rate_max: 1.20
+  hospital_unmatched_rate_max: 0.02
+```
+
 ## 규칙
 - scenario별 파일 분리
 - 공통 규칙은 별도 공통 config로 분리

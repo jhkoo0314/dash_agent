@@ -7,8 +7,11 @@
 - 현재 코드/구조 기준 파일
   - `scripts/sfe_sandbox.py`
   - `scripts/report_builder_v12.py`
+  - `scripts/map_data_builder.py`
+  - `scripts/hospital_map_tab.py`
   - `config/mapping.json`
   - `docs/workflow.md`
+  - `rebuild/docs/14_map_builder_rebuild_spec.md`
 - 비교 축
   - 아키텍처, 데이터 계약, 조인/그레인, 품질, 운영, 배포, 보안, 거버넌스
 
@@ -176,22 +179,43 @@
 - 완료 기준
   - 국문 컬럼/값이 모든 단계에서 무손실 유지
 
+### 4.12 맵빌더 파이프라인 표준화 (신규 명시)
+- As-Is
+  - 맵 생성 로직은 동작하지만, 리빌드 공통 정책(데이터 계약/Fail-Fast/구조화 로그)과의 연결 문서가 약함
+  - 맵 전용 품질 게이트(좌표 결측률/범위 이탈률/병원키 미매핑률/route 이상치)가 체크리스트에 명시되지 않음
+- To-Be
+  - 맵빌더를 리빌드 표준 시나리오로 편입하고, 전용 기준은 `14_map_builder_rebuild_spec.md`로 단일 관리
+  - map 시나리오 YAML, 맵 전용 로그 메트릭, 회귀 테스트를 공통 운영체계에 통합
+- 보완 액션
+  - `config/scenarios/map_spatial_preview.yaml` 초안 도입
+  - 맵 전용 quality gate를 시나리오 config로 외부화(하드코딩 금지)
+  - 맵 전용 로그 필드(`coord_missing_rate`, `coord_out_of_range_rate`, `hospital_unmatched_rate`, `route_count`, `avg_route_km`) 추가
+  - 맵 회귀 테스트(마커/루트 개수, 평균 이동거리 허용 편차) 도입
+- 우선순위: P0
+- 완료 기준
+  - 동일 입력+동일 config에서 `map_master`/`spatial_preview` 재현 가능
+  - 좌표/조인 이상치가 Fail-Fast로 차단
+  - 로그만으로 맵 생성 실패 원인 재현 가능
+
 ## 5. 우선순위 로드맵
 
 ### Phase 0 (1주): 안정화 최소선
 - 데이터 계약 강제
 - 조인 Fail-Fast 게이트 구현
 - 구조화 로그(run_id) 도입
+- 맵 전용 품질 게이트(좌표/병원키) 최소선 적용
 
 ### Phase 1 (2주): 구조 분리
 - 엔진 모듈 분리
 - 시나리오 config 템플릿화
 - 템플릿 렌더 계층 분리
+- `map_spatial_preview` 시나리오를 공통 엔진 체계로 편입
 
 ### Phase 2 (2주): 품질 자동화
 - 단위/통합/회귀 테스트 구축
 - 지표 sanity check 자동화
 - 매핑 변경 영향 분석 자동화
+- 맵 회귀 테스트(마커/루트/거리) 자동화
 
 ### Phase 3 (지속): 운영 성숙화
 - 릴리즈/롤백 운영
@@ -204,6 +228,8 @@
 - 조인 오류 재발률: 월 5% 이하
 - 매핑 재사용률: 80% 이상
 - 평균 리포트 생성 시간: 10분 이내
+- 맵 좌표 결측률: 10% 이하
+- 맵 병원키 미매핑률: 2% 이하
 
 ## 7. 즉시 실행 가능한 액션 (다음 스프린트)
 1. `config/schema` 추가 및 validator 구현
@@ -211,6 +237,8 @@
 3. run_id 기반 JSON 로그 표준화
 4. 시나리오 YAML 3종(monthly/quarterly/business) 초안 적용
 5. 회귀 테스트용 샘플 데이터셋 1세트 확정
+6. `config/scenarios/map_spatial_preview.yaml` 초안 추가
+7. 맵 전용 quality gate와 로그 메트릭 필드 반영
 
 ## 8. 결론
 현재 프로젝트는 실무 경험이 반영된 강한 기반을 갖고 있으나, 재구축 관점에서는 "운영 강제력"과 "자동 검증 체계"가 핵심 보완 지점이다.
